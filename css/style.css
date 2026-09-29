@@ -1271,5 +1271,113 @@ body {
   font-size: 0.78rem;
 }
 
+/* =======================================================
+   INTERACTIVE VIDEO-GAME MANUAL FLIGHT HUD CONTROLS
+   ======================================================= */
+.manual-flight-hud {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(10, 16, 28, 0.94);
+  border: 1.5px solid rgba(0, 240, 255, 0.45);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #fff;
+  z-index: 28;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 240, 255, 0.2);
+  font-family: 'JetBrains Mono', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: slide-up 0.25s ease;
+  pointer-events: none;
+}
+
+.manual-hud-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #00f0ff;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+  padding-bottom: 4px;
+}
+
+.hud-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.manual-hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hud-key-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-row {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+.game-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+  min-width: 44px;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: all 0.08s ease;
+  user-select: none;
+}
+
+.game-key.wide-key {
+  min-width: 125px;
+  height: 26px;
+  font-size: 0.62rem;
+}
+
+.hud-alt-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.game-key.key-active {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #00f0ff !important;
+  box-shadow: 0 0 14px #00f0ff, 0 0 6px #ffffff !important;
+  transform: translateY(1px) scale(0.96);
+}
+
+.manual-hud-footer {
+  font-size: 0.58rem;
+  color: #94a3b8;
+  text-align: center;
+  border-top: 1px solid rgba(56, 189, 248, 0.15);
+  padding-top: 4px;
+}
+
+
 
 

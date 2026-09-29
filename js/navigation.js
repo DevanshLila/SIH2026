@@ -481,7 +481,18 @@ class AutonomousNavigator {
       this.drone.telemetry.flightMode = 'GPS-DENIED: UWB SLAM';
       this.generateUWBPenetrationPath();
     } else if (mode === 'MANUAL') {
-      this.drone.telemetry.flightMode = 'MANUAL TELEOPERATION';
+      this.drone.telemetry.flightMode = 'MANUAL TELEOPERATION (WASD)';
+      // Immediately lock hover at current drone position & halt any autonomous momentum
+      this.drone.targetPosition.copy(this.drone.group.position);
+      this.drone.targetRotation.y = this.drone.group.rotation.y;
+      this.drone.velocity.set(0, 0, 0);
+      this.waypoints = [];
+    }
+
+    // Toggle interactive video-game manual HUD overlay
+    const manualHud = document.getElementById('manual-flight-hud');
+    if (manualHud) {
+      manualHud.style.display = (mode === 'MANUAL') ? 'flex' : 'none';
     }
   }
 
@@ -618,28 +629,94 @@ class AutonomousNavigator {
   }
 
   handleManualFlight(delta) {
-    const speed = 12.0 * delta;
-    const climbSpeed = 8.0 * delta;
-    const yawRate = 2.0 * delta;
+    const dronePos = this.drone.group.position;
+    const yaw = this.drone.group.rotation.y;
 
-    const forwardVector = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, this.drone.group.rotation.y, 0));
-    const rightVector = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, this.drone.group.rotation.y, 0));
+    // Video-game responsive flight dynamics
+    const moveSpeed = 6.8; // m/s forward/strafe cruising velocity
+    const climbSpeed = 3.6; // m/s vertical climb rate
+    const yawRate = 2.4; // rad/s rotation agility
 
-    const newTarget = this.drone.targetPosition.clone();
+    // Forward and Right unit vectors aligned with current drone yaw heading
+    const forwardVector = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    const rightVector = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
 
-    if (this.keys.forward) newTarget.add(forwardVector.clone().multiplyScalar(speed));
-    if (this.keys.backward) newTarget.add(forwardVector.clone().multiplyScalar(-speed));
-    if (this.keys.right) newTarget.add(rightVector.clone().multiplyScalar(speed));
-    if (this.keys.left) newTarget.add(rightVector.clone().multiplyScalar(-speed));
-    if (this.keys.up) newTarget.y = Math.min(35, newTarget.y + climbSpeed);
-    if (this.keys.down) newTarget.y = Math.max(1.5, newTarget.y - climbSpeed);
+    let moveX = 0;
+    let moveZ = 0;
+    let moveY = 0;
+    let yawDir = 0;
 
-    let newYaw = this.drone.targetRotation.y;
-    if (this.keys.yawLeft) newYaw += yawRate;
-    if (this.keys.yawRight) newYaw -= yawRate;
+    if (this.keys.forward) {
+      moveX += forwardVector.x;
+      moveZ += forwardVector.z;
+    }
+    if (this.keys.backward) {
+      moveX -= forwardVector.x;
+      moveZ -= forwardVector.z;
+    }
+    if (this.keys.right) {
+      moveX += rightVector.x;
+      moveZ += rightVector.z;
+    }
+    if (this.keys.left) {
+      moveX -= rightVector.x;
+      moveZ -= rightVector.z;
+    }
 
-    this.drone.targetPosition.copy(newTarget);
-    this.drone.targetRotation.y = newYaw;
+    if (this.keys.up) {
+      moveY += 1.0;
+    }
+    if (this.keys.down) {
+      moveY -= 1.0;
+    }
+
+    if (this.keys.yawLeft) {
+      yawDir += 1.0;
+    }
+    if (this.keys.yawRight) {
+      yawDir -= 1.0;
+    }
+
+    const hasHorizontalInput = (moveX !== 0 || moveZ !== 0);
+    const hasVerticalInput = (moveY !== 0);
+
+    // 1. Horizontal Motion & Video-Game Instant Hover-Brake
+    if (hasHorizontalInput) {
+      const len = Math.hypot(moveX, moveZ);
+      const nx = moveX / len;
+      const nz = moveZ / len;
+
+      // Project target forward smoothly in command direction
+      this.drone.targetPosition.x = dronePos.x + nx * (moveSpeed * 0.45);
+      this.drone.targetPosition.z = dronePos.z + nz * (moveSpeed * 0.45);
+    } else {
+      // Key released -> immediately lock position and apply aerodynamic hover braking
+      this.drone.targetPosition.x = dronePos.x;
+      this.drone.targetPosition.z = dronePos.z;
+      this.drone.velocity.x *= 0.85;
+      this.drone.velocity.z *= 0.85;
+    }
+
+    // 2. Vertical Altitude Control & Hold
+    if (hasVerticalInput) {
+      const targetY = Math.max(1.5, Math.min(36, dronePos.y + moveY * (climbSpeed * 0.4)));
+      this.drone.targetPosition.y = targetY;
+    } else {
+      // Lock current altitude firmly
+      this.drone.targetPosition.y = dronePos.y;
+      this.drone.velocity.y *= 0.82;
+    }
+
+    // 3. Smooth Yaw Rotation
+    if (yawDir !== 0) {
+      this.drone.targetRotation.y += yawDir * yawRate * delta;
+      this.drone.group.rotation.y = this.drone.targetRotation.y;
+    }
+
+    // Update Telemetry Display
+    this.drone.telemetry.flightMode = (hasHorizontalInput || hasVerticalInput || yawDir !== 0)
+      ? 'MANUAL: FLYING (WASD)'
+      : 'MANUAL: STABLE HOVER';
   }
 
   checkObstacleAvoidance() {
@@ -749,29 +826,151 @@ class AutonomousNavigator {
   }
 
   initKeyboardControls() {
+    const isControlKey = (code) => {
+      return [
+        'KeyW', 'KeyS', 'KeyA', 'KeyD',
+        'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+        'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'ControlLeft', 'ControlRight',
+        'KeyQ', 'KeyE', 'KeyR', 'KeyF'
+      ].includes(code);
+    };
+
+    const updateHudKey = (id, active) => {
+      const el = document.getElementById(id);
+      if (el) {
+        if (active) el.classList.add('key-active');
+        else el.classList.remove('key-active');
+      }
+    };
+
     window.addEventListener('keydown', (e) => {
+      if (isControlKey(e.code)) {
+        // Prevent default browser behavior (e.g. Space or Arrow keys scrolling the webpage!)
+        if (e.target && !['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
+          e.preventDefault();
+        }
+      }
+
       switch (e.code) {
-        case 'KeyW': this.keys.forward = true; break;
-        case 'KeyS': this.keys.backward = true; break;
-        case 'KeyA': this.keys.left = true; break;
-        case 'KeyD': this.keys.right = true; break;
-        case 'Space': case 'ArrowUp': this.keys.up = true; break;
-        case 'ShiftLeft': case 'ArrowDown': this.keys.down = true; break;
-        case 'KeyQ': case 'ArrowLeft': this.keys.yawLeft = true; break;
-        case 'KeyE': case 'ArrowRight': this.keys.yawRight = true; break;
+        // Forward: W or Up Arrow
+        case 'KeyW':
+        case 'ArrowUp':
+          this.keys.forward = true;
+          updateHudKey('key-w', true);
+          break;
+
+        // Backward: S or Down Arrow
+        case 'KeyS':
+        case 'ArrowDown':
+          this.keys.backward = true;
+          updateHudKey('key-s', true);
+          break;
+
+        // Strafe Left: A
+        case 'KeyA':
+          this.keys.left = true;
+          updateHudKey('key-a', true);
+          break;
+
+        // Strafe Right: D
+        case 'KeyD':
+          this.keys.right = true;
+          updateHudKey('key-d', true);
+          break;
+
+        // Ascend / Climb: Space or Key R
+        case 'Space':
+        case 'KeyR':
+          this.keys.up = true;
+          updateHudKey('key-space', true);
+          break;
+
+        // Descend / Fly Down: Shift, C, Ctrl, or Key F
+        case 'ShiftLeft':
+        case 'ShiftRight':
+        case 'KeyC':
+        case 'ControlLeft':
+        case 'ControlRight':
+        case 'KeyF':
+          this.keys.down = true;
+          updateHudKey('key-shift', true);
+          break;
+
+        // Rotate / Yaw Left: Q or Left Arrow
+        case 'KeyQ':
+        case 'ArrowLeft':
+          this.keys.yawLeft = true;
+          updateHudKey('key-q', true);
+          break;
+
+        // Rotate / Yaw Right: E or Right Arrow
+        case 'KeyE':
+        case 'ArrowRight':
+          this.keys.yawRight = true;
+          updateHudKey('key-e', true);
+          break;
       }
     });
 
     window.addEventListener('keyup', (e) => {
       switch (e.code) {
-        case 'KeyW': this.keys.forward = false; break;
-        case 'KeyS': this.keys.backward = false; break;
-        case 'KeyA': this.keys.left = false; break;
-        case 'KeyD': this.keys.right = false; break;
-        case 'Space': case 'ArrowUp': this.keys.up = false; break;
-        case 'ShiftLeft': case 'ArrowDown': this.keys.down = false; break;
-        case 'KeyQ': case 'ArrowLeft': this.keys.yawLeft = false; break;
-        case 'KeyE': case 'ArrowRight': this.keys.yawRight = false; break;
+        // Forward: W or Up Arrow
+        case 'KeyW':
+        case 'ArrowUp':
+          this.keys.forward = false;
+          updateHudKey('key-w', false);
+          break;
+
+        // Backward: S or Down Arrow
+        case 'KeyS':
+        case 'ArrowDown':
+          this.keys.backward = false;
+          updateHudKey('key-s', false);
+          break;
+
+        // Strafe Left: A
+        case 'KeyA':
+          this.keys.left = false;
+          updateHudKey('key-a', false);
+          break;
+
+        // Strafe Right: D
+        case 'KeyD':
+          this.keys.right = false;
+          updateHudKey('key-d', false);
+          break;
+
+        // Ascend / Climb: Space or Key R
+        case 'Space':
+        case 'KeyR':
+          this.keys.up = false;
+          updateHudKey('key-space', false);
+          break;
+
+        // Descend / Fly Down: Shift, C, Ctrl, or Key F
+        case 'ShiftLeft':
+        case 'ShiftRight':
+        case 'KeyC':
+        case 'ControlLeft':
+        case 'ControlRight':
+        case 'KeyF':
+          this.keys.down = false;
+          updateHudKey('key-shift', false);
+          break;
+
+        // Rotate / Yaw Left: Q or Left Arrow
+        case 'KeyQ':
+        case 'ArrowLeft':
+          this.keys.yawLeft = false;
+          updateHudKey('key-q', false);
+          break;
+
+        // Rotate / Yaw Right: E or Right Arrow
+        case 'KeyE':
+        case 'ArrowRight':
+          this.keys.yawRight = false;
+          updateHudKey('key-e', false);
+          break;
       }
     });
   }

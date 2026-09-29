@@ -300,16 +300,17 @@ class DroneModel {
       this.group.rotation.z += (targetRoll - this.group.rotation.z) * 0.12;
       this.group.rotation.x += (targetPitch - this.group.rotation.x) * 0.12;
 
-      // Align heading smoothly to direction of travel or target yaw
+      // Align heading smoothly to direction of travel (in auto modes) or to targetRotation (in manual mode)
+      const isManual = (this.telemetry.flightMode && this.telemetry.flightMode.includes('MANUAL'));
       const speedH = Math.hypot(this.velocity.x, this.velocity.z);
-      if (speedH > 1.2 && distH > 1.5) {
+      if (!isManual && speedH > 1.2 && distH > 1.5) {
         const headingAngle = Math.atan2(-this.velocity.x, -this.velocity.z);
         let diff = headingAngle - this.group.rotation.y;
         while (diff < -Math.PI) diff += Math.PI * 2;
         while (diff > Math.PI) diff -= Math.PI * 2;
         this.group.rotation.y += diff * 0.08;
       } else {
-        this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.08;
+        this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.12;
       }
 
       // Update telemetry
