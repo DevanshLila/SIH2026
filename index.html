@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AERORES-AI | Disaster Rescue UAV Simulation | Team Pegasus (SIH 2026)</title>
+  
+  <!-- CDNs: Three.js for 3D simulation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  
+  <!-- Custom Styling -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Tactical Navigation Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <span class="badge-sih">SIH 2026</span>
+        <span class="badge-team">TEAM PEGASUS</span>
+        <div class="title-group">
+          <h1>AERORES-AI <span style="font-weight:400; font-size:0.85rem; color:#38bdf8;">| Autonomous Disaster-Response UAV</span></h1>
+          <p>Qualcomm Inc. PS-26177 &bull; Multi-Sensor Fusion &bull; Edge AI &bull; GPS-Denied SAR</p>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="status-pill">
+          <div class="status-dot"></div>
+          <span class="mono" style="font-weight:700;">AUTONOMOUS SAR ACTIVE</span>
+        </div>
+
+        <!-- Disaster Scenario Selector -->
+        <select id="select-scenario" class="btn-tactical" style="padding: 0.35rem 0.6rem; cursor:pointer;">
+          <option value="earthquake">🏚️ Urban Earthquake Collapse</option>
+          <option value="chemical_fire">☣️ Industrial Gas & Factory Blast</option>
+          <option value="flash_flood">🌊 Assam Flash Flood Inundation</option>
+        </select>
+
+        <!-- Day / Night Mode Toggle -->
+        <button id="btn-day-night" class="btn-tactical" style="padding: 0.35rem 0.65rem;" title="Toggle Day / Night environmental lighting">
+          ☀️ Day Mode
+        </button>
+      </div>
+
+      <div class="header-right">
+        <!-- SIH Judge Presentation Mode -->
+        <button id="btn-start-tour" class="btn-tactical btn-tour" title="Launch guided interactive demo for SIH judges">
+          ⭐ SIH Presentation Mode
+        </button>
+
+        <!-- NDRF SITREP Report Generator -->
+        <button id="btn-generate-sitrep" class="btn-tactical btn-primary" title="Export official NDRF disaster situational report">
+          📄 NDRF SITREP
+        </button>
+
+        <!-- System Architecture & Circuit Schematic Modal -->
+        <button id="btn-show-arch" class="btn-tactical" title="View hardware wiring, BOM & system architecture">
+          🔬 Hardware Circuit & Specs
+        </button>
+
+        <!-- Sound Synthesizer Toggle -->
+        <button id="btn-sound-toggle" class="btn-tactical" title="Toggle drone propeller sound & radar audio">
+          🔇 Audio Off
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Split -->
+    <main class="app-main">
+      
+      <!-- 3D Mission Viewport & Multi-Sensor Feeds (Left Column) -->
+      <section class="viewport-wrapper">
+        <div id="three-canvas-container">
+          <!-- WebGL Canvas injected here by Three.js -->
+        </div>
+
+        <!-- Thermal / NVG Shader Scanline Overlays -->
+        <div id="thermal-scanlines" class="thermal-scanline-overlay"></div>
+        <div id="nvg-filter" class="nvg-overlay"></div>
+
+        <!-- Viewport Topbar Toolbar: Sensor Switcher & Camera Switcher -->
+        <div class="viewport-topbar">
+          <!-- Sensor Payload View Modes -->
+          <div class="sensor-mode-group">
+            <button class="mode-btn active" data-mode="RGB">🎥 4K Optical + AI</button>
+            <button class="mode-btn thermal" data-mode="THERMAL">🔥 FLIR Thermal IR</button>
+            <button class="mode-btn nvg" data-mode="NVG">👁️ Night Vision</button>
+            <button class="mode-btn lidar" data-mode="LIDAR">📡 3D LiDAR SLAM</button>
+            <button class="mode-btn" data-mode="GAS">☣️ Gas Plume Gradient</button>
+          </div>
+
+          <!-- Camera Angles -->
+          <div class="camera-angle-group">
+            <button class="cam-btn active" data-cam="FOLLOW">Follow (3rd)</button>
+            <button class="cam-btn" data-cam="FPV">Gimbal FPV</button>
+            <button class="cam-btn" data-cam="TOPDOWN">Top-Down Survey</button>
+            <button class="cam-btn" data-cam="ORBIT">360° Orbit</button>
+          </div>
+        </div>
+
+        <!-- Overlaid Flight HUD Reticle & Crosshairs -->
+        <div class="drone-hud-overlay">
+          <!-- Compass Ribbon Top -->
+          <div class="hud-compass">
+            <span id="hud-compass-text">HDG: 000° N</span>
+            <span class="mono" style="color:#94a3b8;">FOV: 84°</span>
+            <span class="mono" style="color:#10b981;">NPU: 68 FPS</span>
+          </div>
+
+          <!-- Center Crosshair & Pitch Ladder -->
+          <div class="hud-center">
+            <div class="hud-crosshair"></div>
+            <div class="pitch-ladder">
+              <div class="pitch-line"><span>+10</span><span>+10</span></div>
+              <div class="pitch-line"><span>+05</span><span>+05</span></div>
+              <div class="pitch-line"><span>--00--</span><span>--00--</span></div>
+              <div class="pitch-line"><span>-05</span><span>-05</span></div>
+              <div class="pitch-line"><span>-10</span><span>-10</span></div>
+            </div>
+          </div>
+
+          <!-- AI Detection Bounding Boxes Overlay (YOLOv8 Aerial Inference) -->
+          <div id="ai-detections-container"></div>
+        </div>
+
+        <!-- PIP (Picture-In-Picture) Inset Preview Window -->
+        <div id="pip-window" class="pip-preview-window" title="Click to swap camera viewports">
+          <div class="pip-header">
+            <span>SECONDARY INSET FEED</span>
+            <span style="font-size:0.6rem;">CLICK TO SWAP</span>
+          </div>
+          <canvas id="pip-canvas"></canvas>
+        </div>
+
+        <!-- Tour Guide Toast for SIH Judges -->
+        <div id="tour-toast" class="tour-toast">
+          <div class="status-dot" style="background:#c084fc; box-shadow:0 0 10px #c084fc;"></div>
+          <span id="tour-toast-text" style="font-size:0.82rem; font-weight:600;">Tour Active...</span>
+        </div>
+      </section>
+
+      <!-- Right Column: Tactical Ground Control Station (GCS) Dashboard -->
+      <aside class="gcs-panel">
+        
+        <!-- Tab Navigation -->
+        <div class="gcs-tabs">
+          <button class="tab-btn active" data-tab="telemetry">📊 Avionics</button>
+          <button class="tab-btn" data-tab="map">🗺️ Tactical GIS</button>
+          <button class="tab-btn" data-tab="triage">🚨 Victim Triage</button>
+          <button class="tab-btn" data-tab="serial">💻 MAVLink/Serial</button>
+        </div>
+
+        <div class="gcs-content">
+          
+          <!-- TAB 1: Avionics & Telemetry -->
+          <div id="tab-telemetry" class="tab-pane active">
+            
+            <!-- Primary Flight Display (PFD) Gauge -->
+            <div class="telemetry-card">
+              <div class="card-title">
+                <span>Primary Flight Display</span>
+                <span style="color:#10b981;">IMU 6-DOF FUSED</span>
+              </div>
+              <div class="pfd-container">
+                <div id="pfd-horizon" class="pfd-horizon">
+                  <div class="pfd-cross"></div>
+                </div>
+                <div class="pfd-stats">
+                  <div class="stat-item">
+                    <div class="stat-label">ALTITUDE (AGL)</div>
+                    <div id="val-alt-agl" class="stat-value">14.0 m</div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">BARO (ASL)</div>
+                    <div id="val-alt-baro" class="stat-value">228.5 m</div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">GROUND SPEED</div>
+                    <div id="val-speed" class="stat-value">7.2 m/s</div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">CLIMB RATE</div>
+                    <div id="val-climb" class="stat-value">0.0 m/s</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Battery & Power Management -->
+            <div class="telemetry-card">
+              <div class="card-title">
+                <span>Power System (6S LiPo 22.2V)</span>
+                <span id="val-bat-volt" class="mono" style="color:#38bdf8;">24.8 V</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:4px;">
+                <span style="color:#94a3b8;">Endurance Capacity</span>
+                <span id="val-bat-pct" class="mono" style="font-weight:700; color:#10b981;">98%</span>
+              </div>
+              <div class="progress-bar-wrap">
+                <div id="bar-bat-fill" class="progress-bar-fill" style="width: 98%;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:0.68rem; color:#64748b; margin-top:6px;">
+                <span>Est. Flight Time: ~28 min</span>
+                <span>Current: 26.5A @ 100% Throttle</span>
+              </div>
+            </div>
+
+            <!-- Gas Sensor & Environmental Hazards (Slide 2 & 7) -->
+            <div class="telemetry-card" style="border-left: 3px solid #a855f7;">
+              <div class="card-title">
+                <span>Gas Sniffer & Chemical Analysis</span>
+                <span id="val-gas-ppm" class="mono" style="color:#c084fc; font-weight:700;">18 PPM</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); padding:8px; border-radius:4px;">
+                <div>
+                  <div style="font-size:0.65rem; color:#94a3b8;">IDENTIFIED HAZARD COMPOUND</div>
+                  <div id="val-gas-type" class="mono" style="font-size:0.85rem; font-weight:700; color:#f1f5f9;">BASELINE ATMOSPHERE</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:0.65rem; color:#94a3b8;">SENSOR CORE</div>
+                  <div class="mono" style="font-size:0.75rem; color:#38bdf8;">MQ-4 / MQ-7 / PID</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- RF Comms, LoRa & Positioning -->
+            <div class="telemetry-grid">
+              <div class="telemetry-cell">
+                <div class="cell-title">LORA RF RSSI</div>
+                <div id="val-rssi" class="cell-data">-74 dBm</div>
+              </div>
+              <div class="telemetry-cell">
+                <div class="cell-title">GNSS SATELLITES</div>
+                <div id="val-sats" class="cell-data">21 Locked</div>
+              </div>
+              <div class="telemetry-cell">
+                <div class="cell-title">UWB ACCURACY</div>
+                <div class="cell-data">&plusmn;5.0 cm</div>
+              </div>
+            </div>
+
+            <!-- Emergency Actions -->
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-top:0.5rem;">
+              <button id="btn-drop-payload" class="btn-tactical btn-primary" style="justify-content:center;">
+                📦 Drop Emergency Medkit
+              </button>
+              <button id="btn-rth" class="btn-tactical btn-alert" style="justify-content:center;">
+                🏠 Emergency RTH
+              </button>
+            </div>
+          </div>
+
+          <!-- TAB 2: Tactical GIS Map -->
+          <div id="tab-map" class="tab-pane">
+            <div class="telemetry-card" style="padding:0.5rem;">
+              <div class="card-title" style="margin-bottom:0.4rem;">
+                <span>Disaster Sector Radar (160m &times; 160m)</span>
+                <span style="color:#00f0ff;">LIVE GIS</span>
+              </div>
+              <div id="gis-map-container">
+                <canvas id="gis-canvas"></canvas>
+              </div>
+              <div style="font-size:0.68rem; color:#94a3b8; margin-top:8px; line-height:1.4;">
+                <p>&bull; <span style="color:#00f0ff;">Cyan Trail:</span> UAV Flight Path & Sensor FOV Wedge</p>
+                <p>&bull; <span style="color:#c084fc;">Purple Circle:</span> Methane/Toxic Gas Hazard Exclusion Zone</p>
+                <p>&bull; <span style="color:#10b981;">Green Dotted Line:</span> Computed Safe Ground Ingress Route for NDRF</p>
+                <p>&bull; <span style="color:#ef4444;">Red/Yellow Pins:</span> Geo-Tagged Survivors</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: Victim Triage (NDRF START Protocol) -->
+          <div id="tab-triage" class="tab-pane">
+            <div class="telemetry-card">
+              <div class="card-title">
+                <span>Victim Registry & Triage Priority</span>
+                <span style="color:#ef4444;">NDRF PROTOCOL</span>
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="triage-table">
+                  <thead>
+                    <tr>
+                      <th>Status / Tag</th>
+                      <th>Class</th>
+                      <th>Temp</th>
+                      <th>GPS Coordinates</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="triage-table-body">
+                    <!-- Populated dynamically by dashboard.js -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 4: MAVLink & Arduino Serial Stream -->
+          <div id="tab-serial" class="tab-pane">
+            <div class="telemetry-card">
+              <div class="card-title">
+                <span>Hardware Serial Stream (Arduino Mega 2560 & RPi)</span>
+                <span style="color:#34d399;">115200 BAUD</span>
+              </div>
+              <div id="serial-console-logs" class="serial-console">
+                <!-- Real-time serial logs generated dynamically -->
+              </div>
+              <div style="font-size:0.68rem; color:#64748b; margin-top:6px;">
+                Direct serial telemetry bridge over LoRa 868MHz downlink to Ground Control Station.
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+    </main>
+
+    <!-- Bottom Tactical Mission Bar -->
+    <footer class="app-footer">
+      <!-- Autonomous Flight Mode Selector -->
+      <div class="footer-nav-modes">
+        <span style="font-size:0.75rem; color:#94a3b8; font-weight:600;">FLIGHT MODE:</span>
+        <button class="nav-mode-btn active" data-nav="GRID">Grid Lawnmower</button>
+        <button class="nav-mode-btn" data-nav="SPIRAL">Spiral Recon</button>
+        <button class="nav-mode-btn" data-nav="UWB_DENIED">GPS-Denied UWB</button>
+        <button class="nav-mode-btn" data-nav="MANUAL">Manual (WASD)</button>
+      </div>
+
+      <!-- Live Mission Metrics -->
+      <div class="flight-stats-group">
+        <div class="flight-stat">
+          <span class="stat-key">MISSION TIME</span>
+          <span id="footer-mission-time" class="stat-val">00:00</span>
+        </div>
+        <div class="flight-stat">
+          <span class="stat-key">AREA SCANNED</span>
+          <span id="footer-area-scanned" class="stat-val">0 m²</span>
+        </div>
+        <div class="flight-stat">
+          <span class="stat-key">SURVIVORS LOCATED</span>
+          <span id="footer-survivors-count" class="stat-val" style="color:#34d399;">0 / 3</span>
+        </div>
+        <button id="btn-takeoff-land" class="btn-tactical btn-alert" style="padding:0.35rem 0.8rem;">
+          🛬 Land
+        </button>
+      </div>
+    </footer>
+
+    <!-- MODAL: NDRF Official SITREP Report -->
+    <div id="sitrep-modal" class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span>📋 Official Disaster Situation Report (SITREP)</span>
+          </div>
+          <button class="modal-close" onclick="document.getElementById('sitrep-modal').classList.remove('active')">&times;</button>
+        </div>
+        <div id="sitrep-modal-content">
+          <!-- Populated by dashboard.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: System Architecture & Slide 7 Circuit Diagram -->
+    <div id="arch-modal" class="modal-overlay">
+      <div class="modal-box" style="max-width: 900px;">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span>🔬 Team Pegasus - System Architecture & Hardware Circuit</span>
+          </div>
+          <button class="modal-close" onclick="document.getElementById('arch-modal').classList.remove('active')">&times;</button>
+        </div>
+        
+        <div style="font-size:0.8rem; color:#cbd5e1; line-height:1.6; display:flex; flex-direction:column; gap:16px;">
+          <!-- Qualcomm PS Mapping -->
+          <div style="background:#1e293b; padding:12px; border-radius:6px; border-left:4px solid #0284c7;">
+            <p><strong>Smart India Hackathon 2026</strong> | <strong>Problem Statement ID:</strong> 26177 (Internal ID: 12)</p>
+            <p><strong>Organization:</strong> Qualcomm Inc. | <strong>Theme:</strong> Robotics and Drones / Disaster Management</p>
+            <p><strong>Team Pegasus Members:</strong> Devansh Lila, Himanshu Shah, Kavyansh Singh, Kushagra Katiyar, Mihir, Vandana Bairwa</p>
+          </div>
+
+          <!-- Slide 3 Technical Approach Pipeline -->
+          <div>
+            <h4 style="color:#38bdf8; margin-bottom:6px;">1. System Pipeline Architecture (Slide 3)</h4>
+            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; text-align:center;">
+              <div style="background:#0f172a; border:1px solid #38bdf8; padding:8px; border-radius:6px;">
+                <div style="font-weight:700; color:#38bdf8;">Sensors</div>
+                <div style="font-size:0.7rem; color:#94a3b8;">RGB, LiDAR, Thermal, IMU, Gas MQ, UWB, GPS, Barometer</div>
+              </div>
+              <div style="background:#0f172a; border:1px solid #0284c7; padding:8px; border-radius:6px;">
+                <div style="font-weight:700; color:#0284c7;">Sensor Fusion & Preprocessing</div>
+                <div style="font-size:0.7rem; color:#94a3b8;">Kalman Filtering, Point Cloud Registration, Radiometric Alignment</div>
+              </div>
+              <div style="background:#0f172a; border:1px solid #f59e0b; padding:8px; border-radius:6px;">
+                <div style="font-weight:700; color:#f59e0b;">Perception & Edge AI</div>
+                <div style="font-size:0.7rem; color:#94a3b8;">YOLOv8 Aerial, Triage Scoring, Gas Plume Gradient Localization</div>
+              </div>
+              <div style="background:#0f172a; border:1px solid #10b981; padding:8px; border-radius:6px;">
+                <div style="font-weight:700; color:#10b981;">Planner & Control</div>
+                <div style="font-size:0.7rem; color:#94a3b8;">ROS2 Nav2, Coverage Path Planning, Arduino MCU Motor Drivers</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Slide 7 Circuit Connections & Hardware Specifications -->
+          <div>
+            <h4 style="color:#38bdf8; margin-bottom:6px;">2. Hardware Wiring & Payload Integration (Slide 7)</h4>
+            <table style="width:100%; border-collapse:collapse; font-size:0.75rem;">
+              <tr style="background:#0f172a; color:#94a3b8;">
+                <th style="padding:6px; border:1px solid #334155;">Subsystem</th>
+                <th style="padding:6px; border:1px solid #334155;">Hardware Component</th>
+                <th style="padding:6px; border:1px solid #334155;">Interface Bus</th>
+                <th style="padding:6px; border:1px solid #334155;">Function in Disaster SAR</th>
+              </tr>
+              <tr>
+                <td style="padding:6px; border:1px solid #334155;">Flight Controller</td>
+                <td style="padding:6px; border:1px solid #334155;">Arduino Mega 2560 & Pixhawk</td>
+                <td style="padding:6px; border:1px solid #334155;">UART / PWM / I2C</td>
+                <td style="padding:6px; border:1px solid #334155;">PID attitude control, ESC motor driving, barometer altitude</td>
+              </tr>
+              <tr>
+                <td style="padding:6px; border:1px solid #334155;">Edge AI Computer</td>
+                <td style="padding:6px; border:1px solid #334155;">Raspberry Pi 4 / Qualcomm NPU</td>
+                <td style="padding:6px; border:1px solid #334155;">CSI / USB 3.0 / SPI</td>
+                <td style="padding:6px; border:1px solid #334155;">On-device YOLOv8 inference (survivors, fire, collapse voids)</td>
+              </tr>
+              <tr>
+                <td style="padding:6px; border:1px solid #334155;">Thermal Imaging</td>
+                <td style="padding:6px; border:1px solid #334155;">FLIR Lepton 3.5 Radiometric</td>
+                <td style="padding:6px; border:1px solid #334155;">SPI / VoSPI / I2C</td>
+                <td style="padding:6px; border:1px solid #334155;">Spotting 37°C body heat of victims trapped under rubble/night</td>
+              </tr>
+              <tr>
+                <td style="padding:6px; border:1px solid #334155;">3D SLAM & Mapping</td>
+                <td style="padding:6px; border:1px solid #334155;">RPLiDAR A2 / Solid-State LiDAR</td>
+                <td style="padding:6px; border:1px solid #334155;">UART Serial</td>
+                <td style="padding:6px; border:1px solid #334155;">360° point cloud generation & obstacle collision avoidance</td>
+              </tr>
+              <tr>
+                <td style="padding:6px; border:1px solid #334155;">Gas Hazard Sniffer</td>
+                <td style="padding:6px; border:1px solid #334155;">MQ-4 (CH4), MQ-7 (CO), PID VOC</td>
+                <td style="padding:6px; border:1px solid #334155;">Analog ADC (A0-A3)</td>
+                <td style="padding:6px; border:1px solid #334155;">Gas leak type identification, concentration (PPM) & plume tracing</td>
+              </tr>
+              <tr>
+                <td style="padding:6px; border:1px solid #334155;">Indoor Positioning</td>
+                <td style="padding:6px; border:1px solid #334155;">Decawave DWM1000 UWB</td>
+                <td style="padding:6px; border:1px solid #334155;">SPI Bus</td>
+                <td style="padding:6px; border:1px solid #334155;">Centimeter-accurate navigation inside collapsed tunnels (GPS-Denied)</td>
+              </tr>
+              <tr>
+                <td style="padding:6px; border:1px solid #334155;">Telemetry Downlink</td>
+                <td style="padding:6px; border:1px solid #334155;">SX1276 LoRa 868MHz + FPV 5.8G</td>
+                <td style="padding:6px; border:1px solid #334155;">SPI / Analog RF</td>
+                <td style="padding:6px; border:1px solid #334155;">Long-range offline communications to NDRF Ground Control Station</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Open-Source GitHub Repositories Used -->
+          <div>
+            <h4 style="color:#38bdf8; margin-bottom:6px;">3. GitHub & Research Reference Stack (Slide 6)</h4>
+            <ul style="padding-left:18px; font-size:0.75rem; color:#94a3b8; display:flex; flex-direction:column; gap:4px;">
+              <li><strong style="color:#f1f5f9;">ROS2 Navigation2 (nav2):</strong> <a href="https://github.com/ros-navigation/navigation2" target="_blank" style="color:#38bdf8;">github.com/ros-navigation/navigation2</a> (Coverage path planner & waypoint navigation)</li>
+              <li><strong style="color:#f1f5f9;">Ultralytics YOLOv8:</strong> <a href="https://github.com/ultralytics/ultralytics" target="_blank" style="color:#38bdf8;">github.com/ultralytics/ultralytics</a> (Trained on aerial disaster datasets)</li>
+              <li><strong style="color:#f1f5f9;">NIST Standard Test Methods for Response Robots:</strong> DHS SAVER sUAS Search and Rescue Guidelines</li>
+              <li><strong style="color:#f1f5f9;">FLIR Lepton SDK:</strong> Thermal sensor radiometric temperature extraction</li>
+            </ul>
+          </div>
+
+          <div style="text-align:right;">
+            <button class="btn-tactical" onclick="document.getElementById('arch-modal').classList.remove('active')">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- JavaScript Modules -->
+  <script src="js/drone.js"></script>
+  <script src="js/environment.js"></script>
+  <script src="js/sensors.js"></script>
+  <script src="js/navigation.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
