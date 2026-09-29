@@ -206,7 +206,7 @@ class DroneModel {
     this.spotlight = new THREE.SpotLight(0xf8fafc, 12.0, 75, Math.PI / 3.2, 0.55, 1.1);
     this.spotlight.position.set(0, -0.4, 0.2);
     this.spotlight.target.position.set(0, -25, 4);
-    this.spotlight.castShadow = true;
+    this.spotlight.visible = false; // Off during day mode, powered on in night mode
     this.group.add(this.spotlight);
     this.group.add(this.spotlight.target);
 
@@ -310,16 +310,19 @@ class DroneModel {
       this.group.rotation.x += (targetPitch - this.group.rotation.x) * 0.12;
 
       // Align heading smoothly to direction of travel (in auto modes) or to targetRotation (in manual mode)
-      const isManual = (this.telemetry.flightMode && this.telemetry.flightMode.includes('MANUAL'));
       const speedH = Math.hypot(this.velocity.x, this.velocity.z);
       if (!isManual && speedH > 1.2 && distH > 1.5) {
         const headingAngle = Math.atan2(-this.velocity.x, -this.velocity.z);
         let diff = headingAngle - this.group.rotation.y;
         while (diff < -Math.PI) diff += Math.PI * 2;
         while (diff > Math.PI) diff -= Math.PI * 2;
-        this.group.rotation.y += diff * 0.08;
+        if (Number.isFinite(diff)) {
+          this.group.rotation.y += diff * 0.08;
+        }
       } else {
-        this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.12;
+        if (Number.isFinite(this.targetRotation.y)) {
+          this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.12;
+        }
       }
 
       // Update telemetry

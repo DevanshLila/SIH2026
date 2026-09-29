@@ -166,7 +166,7 @@ class App {
       scenarioSelect.addEventListener('change', (e) => {
         const scenario = e.target.value;
         this.environment.buildScenario(scenario);
-        this.navigator.setNavMode('GRID');
+        this.navigator.setNavMode('SPIRAL');
         this.gisMap.trail = [];
         this.sensors.pointHistory = [];
         if (this.gcs) this.gcs.updateTriageTable();
@@ -378,57 +378,63 @@ class App {
   }
 
   updateCamera() {
+    if (!this.drone || !this.drone.group) return;
     const dronePos = this.drone.group.position;
-    const yaw = this.drone.group.rotation.y;
+    const px = Number.isFinite(dronePos.x) ? dronePos.x : 0;
+    const py = Number.isFinite(dronePos.y) ? dronePos.y : 14;
+    const pz = Number.isFinite(dronePos.z) ? dronePos.z : 0;
+    const yaw = Number.isFinite(this.drone.group.rotation.y) ? this.drone.group.rotation.y : 0;
 
     if (this.cameraMode === 'FOLLOW') {
       // Third-person smooth follow
       const offsetDist = 14;
       const offsetHeight = 6.5;
-      const targetCamX = dronePos.x - Math.sin(yaw) * offsetDist;
-      const targetCamZ = dronePos.z - Math.cos(yaw) * offsetDist;
-      const targetCamY = dronePos.y + offsetHeight;
+      const targetCamX = px - Math.sin(yaw) * offsetDist;
+      const targetCamZ = pz - Math.cos(yaw) * offsetDist;
+      const targetCamY = py + offsetHeight;
 
-      this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
-      this.camera.lookAt(dronePos.x, dronePos.y + 1.0, dronePos.z);
+      if (Number.isFinite(targetCamX) && Number.isFinite(targetCamY) && Number.isFinite(targetCamZ)) {
+        this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
+      }
+      this.camera.lookAt(px, py + 1.0, pz);
     } else if (this.cameraMode === 'FPV') {
       // First Person Gimbal View looking forward-down
-      this.camera.position.set(dronePos.x, dronePos.y - 0.35, dronePos.z);
+      this.camera.position.set(px, py - 0.35, pz);
       const lookDist = 25;
       const targetLook = new THREE.Vector3(
-        dronePos.x + Math.sin(yaw) * lookDist,
-        Math.max(0, dronePos.y - 12),
-        dronePos.z + Math.cos(yaw) * lookDist
+        px + Math.sin(yaw) * lookDist,
+        Math.max(0, py - 12),
+        pz + Math.cos(yaw) * lookDist
       );
       this.camera.lookAt(targetLook);
     } else if (this.cameraMode === 'TOPDOWN') {
       // Orthographic survey view from 45m altitude
-      this.camera.position.lerp(new THREE.Vector3(dronePos.x, 48, dronePos.z + 0.1), 0.1);
-      this.camera.lookAt(dronePos.x, 0, dronePos.z);
+      this.camera.position.lerp(new THREE.Vector3(px, 48, pz + 0.1), 0.1);
+      this.camera.lookAt(px, 0, pz);
     } else if (this.cameraMode === 'ORBIT') {
       // Slow rotation around drone
       this.orbitAngle += 0.005;
       const r = 20;
       this.camera.position.set(
-        dronePos.x + Math.cos(this.orbitAngle) * r,
-        dronePos.y + 9,
-        dronePos.z + Math.sin(this.orbitAngle) * r
+        px + Math.cos(this.orbitAngle) * r,
+        py + 9,
+        pz + Math.sin(this.orbitAngle) * r
       );
-      this.camera.lookAt(dronePos);
+      this.camera.lookAt(px, py, pz);
     }
 
     // Inset PIP Camera follows opposite perspective (FPV if follow, or Topdown)
     if (this.pipCamera) {
       if (this.cameraMode === 'FOLLOW') {
-        this.pipCamera.position.set(dronePos.x, dronePos.y - 0.3, dronePos.z);
+        this.pipCamera.position.set(px, py - 0.3, pz);
         this.pipCamera.lookAt(
-          dronePos.x + Math.sin(yaw) * 20,
-          Math.max(0, dronePos.y - 10),
-          dronePos.z + Math.cos(yaw) * 20
+          px + Math.sin(yaw) * 20,
+          Math.max(0, py - 10),
+          pz + Math.cos(yaw) * 20
         );
       } else {
-        this.pipCamera.position.set(dronePos.x, 40, dronePos.z + 0.1);
-        this.pipCamera.lookAt(dronePos.x, 0, dronePos.z);
+        this.pipCamera.position.set(px, 40, pz + 0.1);
+        this.pipCamera.lookAt(px, 0, pz);
       }
     }
   }
@@ -583,23 +589,29 @@ class App {
     const delta = Math.min(0.1, this.clock.getDelta());
 
     // 1. Update Subsystems
-    this.drone.update(delta);
-    this.environment.update(delta);
-    if (this.weather) this.weather.update(delta, this.drone.position);
-    this.navigator.update(delta);
-    this.sensors.update(delta);
-    this.gcs.update(delta);
-    this.gisMap.update(delta);
+    try {
+      if (this.drone) this.drone.update(delta);
+      if (this.environment) this.environment.update(delta);
+      if (this.weather && this.drone) this.weather.update(delta, this.drone.position);
+      if (this.navigator) this.navigator.update(delta);
+      if (this.sensors) this.sensors.update(delta);
+      if (this.gcs) this.gcs.update(delta);
+      if (this.gisMap) this.gisMap.update(delta);
 
-    // 2. Camera tracking
-    this.updateCamera();
+      // 2. Camera tracking
+      this.updateCamera();
 
-    // 3. Render WebGL scene
-    this.renderer.render(this.scene, this.camera);
+      // 3. Render WebGL scene
+      if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+      }
 
-    // 4. Render Inset PIP scene
-    if (this.pipRenderer && this.pipCamera) {
-      this.pipRenderer.render(this.scene, this.pipCamera);
+      // 4. Render Inset PIP scene
+      if (this.pipRenderer && this.pipCamera && this.scene) {
+        this.pipRenderer.render(this.scene, this.pipCamera);
+      }
+    } catch (err) {
+      console.error('Simulation loop error:', err);
     }
   }
 }
