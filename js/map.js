@@ -78,6 +78,11 @@ class TacticalGisMap {
       ctx.stroke();
     }
 
+    // Draw Flood Inundation Overlay if in flash_flood scenario
+    if (this.environment.currentScenario === 'flash_flood') {
+      this.drawFloodOverlay(ctx, w, h);
+    }
+
     // Draw Hazard Zones (Gas dispersion radius)
     if (this.environment.gasPlumeEmitter) {
       const gPos = this.environment.gasPlumeEmitter.position;
@@ -208,6 +213,65 @@ class TacticalGisMap {
 
     // Map Legend / Scale Bar
     this.drawLegend(ctx, w, h);
+  }
+
+  drawFloodOverlay(ctx, w, h) {
+    // 1. Water inundation wash across low-lying sectors
+    ctx.fillStyle = 'rgba(14, 116, 144, 0.16)';
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Churning main river channel corridor
+    ctx.fillStyle = 'rgba(2, 132, 199, 0.2)';
+    ctx.beginPath();
+    const p1 = this.worldToScreen(-55, -45);
+    const p2 = this.worldToScreen(55, -20);
+    const p3 = this.worldToScreen(55, 30);
+    const p4 = this.worldToScreen(-55, 10);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Elevated Road Embankment & Breached Culvert
+    const rStart = this.worldToScreen(-50, 0);
+    const rBreachL = this.worldToScreen(-12, 0);
+    const rBreachR = this.worldToScreen(-4, 0);
+    const rEnd = this.worldToScreen(50, 0);
+
+    // Intact road left
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(rStart.x, rStart.y);
+    ctx.lineTo(rBreachL.x, rBreachL.y);
+    ctx.stroke();
+
+    // Intact road right
+    ctx.beginPath();
+    ctx.moveTo(rBreachR.x, rBreachR.y);
+    ctx.lineTo(rEnd.x, rEnd.y);
+    ctx.stroke();
+
+    // Breached section marker
+    ctx.strokeStyle = '#ef4444';
+    ctx.setLineDash([2, 2]);
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.moveTo(rBreachL.x, rBreachL.y);
+    ctx.lineTo(rBreachR.x, rBreachR.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#ef4444';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('⚠️ ROAD BREACH', rBreachL.x - 10, rBreachL.y - 6);
+
+    // Flood Sector Tag
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('🌊 FLOOD / TSUNAMI ZONE (LEVEL 3)', 12, 20);
   }
 
   drawSafeExtractionRoute() {

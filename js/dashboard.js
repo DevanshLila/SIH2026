@@ -206,13 +206,6 @@ class TacticalGcsDashboard {
     const container = document.getElementById('ai-detections-container');
     if (!container) return;
 
-    // Only display 2D bounding boxes in FPV and Follow camera modes
-    const isHUDVisible = (this.sensors.camera.position.distanceTo(this.drone.group.position) < 35);
-    if (!isHUDVisible) {
-      container.innerHTML = '';
-      return;
-    }
-
     let html = '';
     this.sensors.activeDetections.forEach(det => {
       const left = det.x - det.width / 2;
@@ -240,8 +233,21 @@ class TacticalGcsDashboard {
         ? `<span class="triage-badge badge-${s.triage.toLowerCase()}">${s.triage}: ${s.id}</span>`
         : `<span style="color:#64748b; font-size:0.65rem;">SCANNING SECTOR...</span>`;
 
+      let latBase = 28.6139;
+      let lonBase = 77.2090;
+      let sectorName = 'NCR';
+      if (this.environment.currentScenario === 'flash_flood') {
+        latBase = 26.2006;
+        lonBase = 92.9376;
+        sectorName = 'FLOOD / TSUNAMI Sector';
+      } else if (this.environment.currentScenario === 'chemical_fire') {
+        latBase = 22.3072;
+        lonBase = 73.1812;
+        sectorName = 'Industrial Corridor';
+      }
+
       const coords = s.detected
-        ? `28.6139°N, 77.2090°E (X:${s.position.x.toFixed(0)}, Z:${s.position.z.toFixed(0)})`
+        ? `${latBase.toFixed(4)}°N, ${lonBase.toFixed(4)}°E (${sectorName} X:${s.position.x.toFixed(0)}, Z:${s.position.z.toFixed(0)})`
         : `---`;
 
       const actionBtn = s.detected
@@ -276,7 +282,9 @@ class TacticalGcsDashboard {
       `[${now}] <span class="serial-line">[ARDUINO_MEGA:2560] #IMU_FUSION: ax=${(t.verticalSpeed).toFixed(2)} gz=0.04 temp=31.2C</span>`,
       `[${now}] <span class="serial-line rx">[MQ_GAS_SENSOR] #CH4: ${this.sensors.gasReading.ppm} ppm status=${this.sensors.gasReading.status}</span>`,
       `[${now}] <span class="serial-line">[UWB_DWM1000] #RANGING: [A1:${t.uwbDistance[0]}m A2:${t.uwbDistance[1]}m A3:${t.uwbDistance[2]}m A4:${t.uwbDistance[3]}m]</span>`,
-      `[${now}] <span class="serial-line alert">[NPU_YOLOv8] #INFERENCE: 58.4ms | Detections: ${this.sensors.activeDetections.length} objects</span>`
+      `[${now}] <span class="serial-line alert">[NPU_YOLOv8] #INFERENCE: 58.4ms | Detections: ${this.sensors.activeDetections.length} objects</span>`,
+      `[${now}] <span class="serial-line rx">[HYDRO_SONAR] #FLOOD_STAGE: 1.48m MSL flow=2.1m/s silt_turbidity=88NTU</span>`,
+      `[${now}] <span class="serial-line alert">[NDRF_SAR] #RESCUE_ACTIVE: ${this.environment.survivors.filter(s => s.detected).length}/${this.environment.survivors.length} located | Ingress boats dispatched</span>`
     ];
 
     const pick = samplePackets[Math.floor(Math.random() * samplePackets.length)];
@@ -332,7 +340,7 @@ class TacticalGcsDashboard {
           <div style="background:#1e293b; padding:10px; border-radius:6px;">
             <p><strong>Disaster Zone:</strong> ${
               this.environment.currentScenario === 'earthquake' ? 'Post-Earthquake Urban Collapse Zone Alpha-4' :
-              this.environment.currentScenario === 'flash_flood' ? 'Assam Brahmaputra Severe Inundation Sector Bravo-2' :
+              this.environment.currentScenario === 'flash_flood' ? 'FLOOD / TSUNAMI Inundation Sector Bravo-2' :
               'Industrial Chemical Complex & Gas Blast Charlie-1'
             }</p>
             <p><strong>UAV Flight Mode:</strong> Multi-Sensor Autonomous SLAM & Gas Localization</p>
@@ -366,7 +374,11 @@ class TacticalGcsDashboard {
 
         <h4 style="color:#38bdf8; margin-bottom:8px; font-size:0.9rem;">2. INCIDENT COMMANDER TACTICAL DIRECTIVE</h4>
         <div style="background:#0f2537; border-left:4px solid #00f0ff; padding:10px; font-size:0.78rem; border-radius:4px;">
-          <p><strong>RECOMMENDED EXTRACTION VECTOR:</strong> Ground squads must enter via Western Corridor Alpha (X:-35, Z:32) to circumvent toxic gas plume. First priority is SURV-01 (trapped under rubble void, core temp 37.1°C). Hazmat breathing apparatus required for proximity to sector center.</p>
+          <p><strong>RECOMMENDED EXTRACTION VECTOR:</strong> ${
+            this.environment.currentScenario === 'flash_flood'
+              ? 'NDRF motorized inflatable rescue boats (IRB) and SDRF disaster squads to ingress via elevated road embankment and western river channel. Priority evacuation for rooftop family (SURV-FL-01) and stranded raft victim (SURV-FL-02). Life jackets and hypothermia blankets required.'
+              : 'Ground squads must enter via Western Corridor Alpha (X:-35, Z:32) to circumvent toxic gas plume. First priority is critical RED triage casualties with FLIR core temp >37°C. Hazmat breathing apparatus required if gas level >150 PPM.'
+          }</p>
         </div>
 
         <div style="margin-top:16px; display:flex; justify-content:flex-end; gap:8px;">

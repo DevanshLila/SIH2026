@@ -19,6 +19,18 @@ class App {
     this.gcs = null;
     this.gisMap = null;
 
+    this.skyDome = null;
+    this.skyDomeMat = null;
+    this.daySkyTexture = null;
+    this.nightSkyTexture = null;
+    this.sunGroup = null;
+    this.moonGroup = null;
+    this.stars = null;
+    this.cloudsGroup = null;
+    this.cloudMat = null;
+    this.sunDir = new THREE.Vector3(0.52, 0.72, 0.45).normalize();
+    this.moonDir = new THREE.Vector3(-0.55, 0.68, -0.48).normalize();
+
     this.cameraMode = 'FOLLOW'; // 'FOLLOW', 'FPV', 'TOPDOWN', 'ORBIT'
     this.clock = new THREE.Clock();
 
@@ -44,11 +56,11 @@ class App {
 
     // 1. Scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x040814);
-    this.scene.fog = new THREE.FogExp2(0x060c1d, 0.012);
+    this.scene.background = new THREE.Color(0x38bdf8);
+    this.scene.fog = new THREE.FogExp2(0x93c5fd, 0.0032);
 
-    // 2. Primary Camera
-    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 400);
+    // 2. Primary Camera (Extended far plane for sky dome and celestial objects)
+    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 18, 32);
 
     // 3. Main WebGL Renderer
@@ -63,32 +75,36 @@ class App {
     // 4. PIP Secondary Camera & Renderer
     const pipCanvas = document.getElementById('pip-canvas');
     if (pipCanvas) {
-      this.pipCamera = new THREE.PerspectiveCamera(70, pipCanvas.clientWidth / pipCanvas.clientHeight, 0.1, 200);
+      this.pipCamera = new THREE.PerspectiveCamera(70, pipCanvas.clientWidth / pipCanvas.clientHeight, 0.1, 1000);
       this.pipRenderer = new THREE.WebGLRenderer({ canvas: pipCanvas, antialias: true });
       this.pipRenderer.setSize(pipCanvas.clientWidth, pipCanvas.clientHeight);
     }
 
     // 5. Lighting
-    this.ambientLight = new THREE.AmbientLight(0x2a3b5c, 1.2);
+    this.ambientLight = new THREE.AmbientLight(0xbfe0f7, 1.15);
     this.scene.add(this.ambientLight);
 
-    this.sunLight = new THREE.DirectionalLight(0x93c5fd, 1.6);
-    this.sunLight.position.set(40, 60, 30);
+    this.sunLight = new THREE.DirectionalLight(0xfffbeb, 1.85);
+    this.sunLight.position.copy(this.sunDir).multiplyScalar(150);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.width = 2048;
     this.sunLight.shadow.mapSize.height = 2048;
     this.sunLight.shadow.camera.near = 10;
-    this.sunLight.shadow.camera.far = 150;
-    const d = 45;
+    this.sunLight.shadow.camera.far = 300;
+    const d = 80;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
+    this.sunLight.shadow.bias = -0.0005;
     this.scene.add(this.sunLight);
 
-    // Subtle blue horizon light
-    this.hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0f172a, 0.6);
+    // Natural blue sky-fill horizon light
+    this.hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x1e3a5f, 0.72);
     this.scene.add(this.hemiLight);
+
+    // 6. Sky Dome, Celestial Objects (Sun/Moon), Stars & Clouds
+    this.initSkySystem();
 
     this.isNightMode = false;
 
@@ -115,6 +131,14 @@ class App {
 
     // 6. 2D Tactical GIS Map
     this.gisMap = new TacticalGisMap('gis-canvas', this.drone, this.environment, this.navigator);
+
+    // Initial scenario atmosphere & ground elevation
+    this.updateAtmosphereForScenario(this.environment.currentScenario);
+    if (this.environment.currentScenario === 'flash_flood') {
+      this.drone.setGroundElevation(2.65);
+    } else {
+      this.drone.setGroundElevation(0.75);
+    }
 
     // Auto-takeoff on startup to immediately engage judges
     setTimeout(() => {
@@ -160,11 +184,7 @@ class App {
     if (scenarioSelect) {
       scenarioSelect.addEventListener('change', (e) => {
         const scenario = e.target.value;
-        this.environment.buildScenario(scenario);
-        this.navigator.setNavMode('GRID');
-        this.gisMap.trail = [];
-        this.sensors.pointHistory = [];
-        if (this.gcs) this.gcs.updateTriageTable();
+        this.setScenario(scenario);
       });
     }
 
@@ -401,6 +421,418 @@ class App {
     runStep();
   }
 
+  setScenario(scenario) {
+    this.environment.buildScenario(scenario);
+    if (scenario === 'flash_flood') {
+      this.drone.setGroundElevation(2.65); // Elevated NDRF launch wharf pad (surface y = 1.90m + 0.75m skids)
+    } else {
+      this.drone.setGroundElevation(0.75);
+    }
+    this.updateAtmosphereForScenario(scenario);
+    this.navigator.setNavMode('GRID');
+    this.gisMap.trail = [];
+    this.sensors.pointHistory = [];
+    if (this.gcs) this.gcs.updateTriageTable();
+  }
+
+  initSkySystem() {
+    // 1. Procedural High-Res Canvas Textures
+    this.daySkyTexture = this.generateSkyTexture('#0284c7', '#38bdf8', '#bae6fd', true);
+    this.nightSkyTexture = this.generateSkyTexture('#020617', '#081226', '#0f1d3a', false);
+
+    // 2. 3D Sky Dome Sphere
+    const skyGeo = new THREE.SphereGeometry(600, 32, 24);
+    this.skyDomeMat = new THREE.MeshBasicMaterial({
+      map: this.daySkyTexture,
+      side: THREE.BackSide,
+      fog: false,
+      depthWrite: false
+    });
+    this.skyDome = new THREE.Mesh(skyGeo, this.skyDomeMat);
+    this.scene.add(this.skyDome);
+
+    // 3. Subtle Twinkling Starfield (Night Mode)
+    const starCount = 1200;
+    const starPositions = new Float32Array(starCount * 3);
+    const starColors = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const radius = 540 + Math.random() * 40;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = 0.08 + Math.random() * (Math.PI * 0.42); // Upper dome hemisphere
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+      starPositions[i * 3] = x;
+      starPositions[i * 3 + 1] = y;
+      starPositions[i * 3 + 2] = z;
+
+      // Varied star tints (white, diamond blue, soft warm gold)
+      const tint = Math.random();
+      if (tint > 0.8) {
+        starColors[i * 3] = 1.0; starColors[i * 3 + 1] = 0.95; starColors[i * 3 + 2] = 0.8;
+      } else if (tint > 0.4) {
+        starColors[i * 3] = 0.85; starColors[i * 3 + 1] = 0.92; starColors[i * 3 + 2] = 1.0;
+      } else {
+        starColors[i * 3] = 1.0; starColors[i * 3 + 1] = 1.0; starColors[i * 3 + 2] = 1.0;
+      }
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+    const starMat = new THREE.PointsMaterial({
+      size: 2.6,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
+      fog: false,
+      depthWrite: false
+    });
+    this.stars = new THREE.Points(starGeo, starMat);
+    this.stars.visible = false;
+    this.scene.add(this.stars);
+
+    // 4. Visible Sun ☀️ Mesh & Solar Corona Flare (Day Mode)
+    this.sunGroup = new THREE.Group();
+    const sunCore = new THREE.Mesh(
+      new THREE.SphereGeometry(15, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfffde7, fog: false })
+    );
+    this.sunGroup.add(sunCore);
+
+    const coronaTex = this.generateRadialTexture([
+      { offset: 0, color: 'rgba(255, 255, 255, 1)' },
+      { offset: 0.2, color: 'rgba(254, 240, 138, 0.9)' },
+      { offset: 0.5, color: 'rgba(251, 191, 36, 0.45)' },
+      { offset: 0.8, color: 'rgba(245, 158, 11, 0.15)' },
+      { offset: 1.0, color: 'rgba(245, 158, 11, 0)' }
+    ]);
+    const coronaMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(55, 55),
+      new THREE.MeshBasicMaterial({
+        map: coronaTex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+        side: THREE.DoubleSide
+      })
+    );
+    this.sunGroup.add(coronaMesh);
+
+    const flareTex = this.generateFlareTexture();
+    const flareMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(120, 120),
+      new THREE.MeshBasicMaterial({
+        map: flareTex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+        opacity: 0.65,
+        side: THREE.DoubleSide
+      })
+    );
+    this.sunGroup.add(flareMesh);
+    this.sunGroup.position.copy(this.sunDir).multiplyScalar(420);
+    this.scene.add(this.sunGroup);
+
+    // 5. Visible Moon 🌙 Mesh & Lunar Aura (Night Mode)
+    this.moonGroup = new THREE.Group();
+    const moonTex = this.generateMoonTexture();
+    const moonCore = new THREE.Mesh(
+      new THREE.SphereGeometry(14, 32, 32),
+      new THREE.MeshBasicMaterial({ map: moonTex, fog: false })
+    );
+    this.moonGroup.add(moonCore);
+
+    const lunarHaloTex = this.generateRadialTexture([
+      { offset: 0, color: 'rgba(241, 245, 249, 0.9)' },
+      { offset: 0.3, color: 'rgba(186, 230, 253, 0.55)' },
+      { offset: 0.7, color: 'rgba(56, 189, 248, 0.15)' },
+      { offset: 1.0, color: 'rgba(14, 165, 233, 0)' }
+    ]);
+    const lunarHaloMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(48, 48),
+      new THREE.MeshBasicMaterial({
+        map: lunarHaloTex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+        side: THREE.DoubleSide
+      })
+    );
+    this.moonGroup.add(lunarHaloMesh);
+
+    const lunarAuraMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100),
+      new THREE.MeshBasicMaterial({
+        map: lunarHaloTex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+        opacity: 0.45,
+        side: THREE.DoubleSide
+      })
+    );
+    this.moonGroup.add(lunarAuraMesh);
+    this.moonGroup.position.copy(this.moonDir).multiplyScalar(420);
+    this.moonGroup.visible = false;
+    this.scene.add(this.moonGroup);
+
+    // 6. Atmospheric Floating Cumulus Clouds
+    this.cloudsGroup = new THREE.Group();
+    this.cloudMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.95,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.82
+    });
+
+    const cloudConfigs = [
+      { x: -140, y: 100, z: -120, s: 1.4 },
+      { x: -60,  y: 115, z: -160, s: 1.8 },
+      { x: 40,   y: 95,  z: -110, s: 1.3 },
+      { x: 120,  y: 120, z: -140, s: 1.6 },
+      { x: -170, y: 105, z: 20,   s: 1.5 },
+      { x: -90,  y: 110, z: 90,   s: 1.7 },
+      { x: 20,   y: 125, z: 130,  s: 1.4 },
+      { x: 110,  y: 100, z: 80,   s: 1.8 },
+      { x: 160,  y: 115, z: -20,  s: 1.5 },
+      { x: -30,  y: 130, z: -40,  s: 1.2 },
+      { x: 70,   y: 105, z: -60,  s: 1.5 },
+      { x: -120, y: 95,  z: 140,  s: 1.3 }
+    ];
+
+    cloudConfigs.forEach(cfg => {
+      const cluster = new THREE.Group();
+      cluster.position.set(cfg.x, cfg.y, cfg.z);
+      const puffs = 6;
+      for (let p = 0; p < puffs; p++) {
+        const radius = (5.5 + Math.random() * 4.5) * cfg.s;
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 8), this.cloudMat);
+        puff.position.set(
+          (Math.random() - 0.5) * 16 * cfg.s,
+          (Math.random() - 0.5) * 4 * cfg.s,
+          (Math.random() - 0.5) * 12 * cfg.s
+        );
+        cluster.add(puff);
+      }
+      this.cloudsGroup.add(cluster);
+    });
+    this.scene.add(this.cloudsGroup);
+  }
+
+  generateSkyTexture(topHex, midHex, botHex, withClouds = false) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0.0, topHex);
+    grad.addColorStop(0.42, midHex);
+    grad.addColorStop(0.85, botHex);
+    grad.addColorStop(1.0, botHex);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    if (withClouds) {
+      const cloudWisps = [
+        { x: 120, y: 360, rx: 140, ry: 25 },
+        { x: 380, y: 390, rx: 160, ry: 28 },
+        { x: 220, y: 430, rx: 180, ry: 30 },
+        { x: 440, y: 340, rx: 110, ry: 22 }
+      ];
+      cloudWisps.forEach(w => {
+        const cg = ctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, w.rx);
+        cg.addColorStop(0, 'rgba(255, 255, 255, 0.32)');
+        cg.addColorStop(0.6, 'rgba(255, 255, 255, 0.12)');
+        cg.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.save();
+        ctx.scale(1, w.ry / w.rx);
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.arc(w.x, w.y * (w.rx / w.ry), w.rx, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+  }
+
+  generateRadialTexture(stops) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    stops.forEach(s => grad.addColorStop(s.offset, s.color));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  generateFlareTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+    grad.addColorStop(0.3, 'rgba(253, 224, 71, 0.45)');
+    grad.addColorStop(0.7, 'rgba(249, 115, 22, 0.12)');
+    grad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.strokeStyle = 'rgba(254, 240, 138, 0.2)';
+    ctx.lineWidth = 2;
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+      ctx.beginPath();
+      ctx.moveTo(128, 128);
+      ctx.lineTo(128 + Math.cos(a) * 124, 128 + Math.sin(a) * 124);
+      ctx.stroke();
+    }
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  generateMoonTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+
+    // Base lunar disc
+    ctx.fillStyle = '#f1f5f9';
+    ctx.beginPath();
+    ctx.arc(128, 128, 120, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Lunar maria (dark basalt plains)
+    ctx.fillStyle = '#94a3b8';
+    const maria = [
+      { x: 100, y: 90, r: 35 },
+      { x: 155, y: 110, r: 42 },
+      { x: 115, y: 145, r: 30 },
+      { x: 80, y: 140, r: 24 },
+      { x: 150, y: 165, r: 26 },
+      { x: 175, y: 85, r: 20 }
+    ];
+    maria.forEach(m => {
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Darker crater cores
+    ctx.fillStyle = '#64748b';
+    [
+      { x: 95, y: 95, r: 16 },
+      { x: 150, y: 115, r: 22 },
+      { x: 120, y: 150, r: 14 }
+    ].forEach(c => {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Outer soft rim shading
+    const rimGrad = ctx.createRadialGradient(128, 128, 90, 128, 128, 122);
+    rimGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    rimGrad.addColorStop(1, 'rgba(15, 23, 42, 0.45)');
+    ctx.fillStyle = rimGrad;
+    ctx.beginPath();
+    ctx.arc(128, 128, 120, 0, Math.PI * 2);
+    ctx.fill();
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  updateAtmosphereForScenario(scenario) {
+    if (this.isNightMode) {
+      // 1. Night Mode across all scenarios: Midnight dark blue sky, visible Moon, subtle stars, moonlight
+      if (this.skyDomeMat && this.nightSkyTexture) {
+        this.skyDomeMat.map = this.nightSkyTexture;
+        this.skyDomeMat.needsUpdate = true;
+      }
+      this.scene.background.setHex(0x030712);
+      if (this.scene.fog) {
+        this.scene.fog.color.setHex(0x050b1a);
+        this.scene.fog.density = 0.0048;
+      }
+      if (this.sunGroup) this.sunGroup.visible = false;
+      if (this.moonGroup) this.moonGroup.visible = true;
+      if (this.stars) this.stars.visible = true;
+      if (this.cloudMat) {
+        this.cloudMat.color.setHex(0x1e293b);
+        this.cloudMat.opacity = 0.35;
+      }
+
+      // Moonlight direction and realistic nighttime illumination
+      this.sunLight.position.copy(this.moonDir).multiplyScalar(150);
+      this.sunLight.color.setHex(0x93c5fd);
+      this.sunLight.intensity = 0.52;
+
+      this.ambientLight.color.setHex(0x1e293b);
+      this.ambientLight.intensity = 0.44;
+
+      this.hemiLight.color.setHex(0x1e293b);
+      this.hemiLight.groundColor.setHex(0x020617);
+      this.hemiLight.intensity = 0.32;
+    } else {
+      // 2. Day Mode: Bright realistic blue daytime sky, visible Sun, bright natural lighting, natural shadows
+      if (this.skyDomeMat && this.daySkyTexture) {
+        this.skyDomeMat.map = this.daySkyTexture;
+        this.skyDomeMat.needsUpdate = true;
+      }
+      this.scene.background.setHex(0x38bdf8);
+      if (this.sunGroup) this.sunGroup.visible = true;
+      if (this.moonGroup) this.moonGroup.visible = false;
+      if (this.stars) this.stars.visible = false;
+      if (this.cloudMat) {
+        this.cloudMat.color.setHex(0xffffff);
+        this.cloudMat.opacity = 0.82;
+      }
+
+      // Sunlight direction and brilliant daylight illumination
+      this.sunLight.position.copy(this.sunDir).multiplyScalar(150);
+      this.sunLight.color.setHex(0xfffbeb);
+      this.sunLight.intensity = 1.85;
+
+      this.ambientLight.color.setHex(0xbfe0f7);
+      this.ambientLight.intensity = 1.15;
+
+      this.hemiLight.color.setHex(0x38bdf8);
+      this.hemiLight.groundColor.setHex(0x1e3a5f);
+      this.hemiLight.intensity = 0.72;
+
+      if (scenario === 'flash_flood') {
+        // Bright disaster response scene with soft atmospheric blue haze
+        if (this.scene.fog) {
+          this.scene.fog.color.setHex(0x93c5fd);
+          this.scene.fog.density = 0.0032;
+        }
+      } else if (scenario === 'chemical_fire') {
+        if (this.scene.fog) {
+          this.scene.fog.color.setHex(0x7dd3fc);
+          this.scene.fog.density = 0.0038;
+        }
+      } else {
+        // Earthquake
+        if (this.scene.fog) {
+          this.scene.fog.color.setHex(0x93c5fd);
+          this.scene.fog.density = 0.0034;
+        }
+      }
+    }
+  }
+
   toggleDayNightMode(forceState = null) {
     this.isNightMode = (forceState !== null) ? forceState : !this.isNightMode;
     const btn = document.getElementById('btn-day-night');
@@ -409,29 +841,12 @@ class App {
 
     if (this.isNightMode) {
       if (btn) btn.innerHTML = '🌙 Night Mode';
-      this.scene.background.setHex(0x020409);
-      if (this.scene.fog) {
-        this.scene.fog.color.setHex(0x020409);
-        this.scene.fog.density = 0.016;
-      }
-
-      this.ambientLight.color.setHex(0x0f172a);
-      this.ambientLight.intensity = 0.22;
-
-      this.sunLight.color.setHex(0x1e293b);
-      this.sunLight.intensity = 0.35; // Faint moonlight
-
-      this.hemiLight.color.setHex(0x1e293b);
-      this.hemiLight.groundColor.setHex(0x020409);
-      this.hemiLight.intensity = 0.25;
-
-      // Intelligent Night Mode UAV reaction: Auto-spotlight
       this.drone.toggleSpotlight(true);
       this.environment.setNightMode(true);
 
       // Display prompt
       if (toast && toastText) {
-        toastText.textContent = '🌙 Night Mode: Use FLIR Thermal IR or NVG Mode to detect survivors through pitch darkness!';
+        toastText.textContent = '🌙 Night Mode: Use FLIR Thermal IR or NVG Mode to detect survivors through low-light darkness!';
         toast.style.display = 'flex';
         setTimeout(() => {
           if (!this.tourActive && toast) toast.style.display = 'none';
@@ -439,25 +854,11 @@ class App {
       }
     } else {
       if (btn) btn.innerHTML = '☀️ Day Mode';
-      this.scene.background.setHex(0x0a1426);
-      if (this.scene.fog) {
-        this.scene.fog.color.setHex(0x0a1426);
-        this.scene.fog.density = 0.009;
-      }
-
-      this.ambientLight.color.setHex(0x64748b);
-      this.ambientLight.intensity = 1.1;
-
-      this.sunLight.color.setHex(0xfff7ed);
-      this.sunLight.intensity = 1.8;
-
-      this.hemiLight.color.setHex(0x38bdf8);
-      this.hemiLight.groundColor.setHex(0x0f172a);
-      this.hemiLight.intensity = 0.7;
-
       this.drone.toggleSpotlight(false);
       this.environment.setNightMode(false);
     }
+
+    this.updateAtmosphereForScenario(this.environment.currentScenario);
   }
 
   animate() {
@@ -473,13 +874,36 @@ class App {
     this.gcs.update(delta);
     this.gisMap.update(delta);
 
-    // 2. Camera tracking
+    // 2. Align Sky Dome & Celestial Objects with Camera
+    if (this.skyDome) {
+      this.skyDome.position.copy(this.camera.position);
+    }
+    if (this.stars && this.stars.visible) {
+      this.stars.position.copy(this.camera.position);
+      this.stars.material.opacity = 0.82 + Math.sin(Date.now() * 0.0025) * 0.15;
+    }
+    if (this.sunGroup && this.sunGroup.visible) {
+      this.sunGroup.position.copy(this.camera.position).addScaledVector(this.sunDir, 420);
+      this.sunGroup.quaternion.copy(this.camera.quaternion);
+    }
+    if (this.moonGroup && this.moonGroup.visible) {
+      this.moonGroup.position.copy(this.camera.position).addScaledVector(this.moonDir, 420);
+      this.moonGroup.quaternion.copy(this.camera.quaternion);
+    }
+    if (this.cloudsGroup) {
+      this.cloudsGroup.children.forEach(c => {
+        c.position.x += 0.35 * delta;
+        if (c.position.x > 250) c.position.x = -250;
+      });
+    }
+
+    // 3. Camera tracking
     this.updateCamera();
 
-    // 3. Render WebGL scene
+    // 4. Render WebGL scene
     this.renderer.render(this.scene, this.camera);
 
-    // 4. Render Inset PIP scene
+    // 5. Render Inset PIP scene
     if (this.pipRenderer && this.pipCamera) {
       this.pipRenderer.render(this.scene, this.pipCamera);
     }

@@ -19,6 +19,7 @@ class DroneModel {
     this.velocity = new THREE.Vector3(0, 0, 0);
     this.rotation = new THREE.Euler(0, 0, 0, 'YXZ');
     this.targetRotation = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.groundElevation = 0.75;
     
     // Drone telemetry
     this.telemetry = {
@@ -271,7 +272,7 @@ class DroneModel {
       }
     } else {
       // Resting on ground
-      this.group.position.y = 0.75;
+      this.group.position.y = this.groundElevation;
       this.group.rotation.set(0, this.group.rotation.y, 0);
       this.telemetry.groundSpeed = 0;
       this.telemetry.verticalSpeed = 0;
@@ -279,23 +280,32 @@ class DroneModel {
       this.telemetry.roll = 0;
     }
 
-    this.telemetry.altitudeAGL = Math.max(0, this.group.position.y - 0.75);
+    this.telemetry.altitudeAGL = Math.max(0, this.group.position.y - this.groundElevation);
     this.telemetry.altitudeBaro = this.telemetry.altitudeAGL + 214.5; // ASL offset
     this.position.copy(this.group.position);
+  }
+
+  setGroundElevation(elev) {
+    this.groundElevation = elev;
+    if (!this.telemetry.isFlying) {
+      this.group.position.y = this.groundElevation;
+      this.position.copy(this.group.position);
+    }
   }
 
   takeoff(altitude = 12) {
     this.telemetry.isArmed = true;
     this.telemetry.isFlying = true;
     this.telemetry.flightMode = 'TAKEOFF';
-    this.targetPosition.set(this.group.position.x, altitude, this.group.position.z);
+    const targetY = Math.max(altitude, this.groundElevation + altitude);
+    this.targetPosition.set(this.group.position.x, targetY, this.group.position.z);
   }
 
   land() {
     this.telemetry.flightMode = 'LANDING';
-    this.targetPosition.y = 0.75;
+    this.targetPosition.y = this.groundElevation;
     setTimeout(() => {
-      if (this.group.position.y <= 1.2) {
+      if (this.group.position.y <= this.groundElevation + 0.45) {
         this.telemetry.isFlying = false;
         this.telemetry.isArmed = false;
         this.telemetry.flightMode = 'LANDED';

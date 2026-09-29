@@ -39,7 +39,7 @@ This repository contains the complete interactive 3D WebGL simulation built to d
   - `☣️ Gas Plume Gradient`: Volumetric chemical dispersion plume showing concentration (PPM).
 - **Disaster Environments (Scenario Selector):**
   - `🏚️ Urban Earthquake Collapse`: Deep roadway fissures, buckled pavement, leaning cracked commercial tower, pancaked residential complex, 45+ concrete rubble blocks, fallen utility poles with tangled wires, crushed car, and 5 trapped/stranded survivors.
-  - `🌊 Assam Flash Flood Inundation`: Churning muddy brown floodwaters with dynamic animated ripples, traditional Assam elevated stilt houses ("chang ghar"), tin-roof huts, partially inundated school building, submerged truck and auto-rickshaw, floating logs/debris, banana vegetation, rescue boat, bamboo raft, and 5 rooftop/raft-stranded survivors.
+  - `🌊 FLOOD / TSUNAMI`: Realistic natural blue floodwaters with dynamic animated ripples and waves, traditional elevated stilt houses ("chang ghar"), tin-roof huts, partially inundated school building, submerged truck and auto-rickshaw, floating logs/debris, banana vegetation, rescue boat, bamboo raft, and 5 rooftop/raft-stranded survivors.
   - `☣️ Industrial Gas & Factory Blast`: Chemical tank farm with ruptured pressurized spherical vessel, yellow pipe racks, fractured pipeline manifolds, massive toxic plumes (Ammonia & Methane), AND a fully accessible FACTORY INTERIOR with breached walls, heavy boiler machinery, generator cabinets, fallen cable trays, elevated catwalk, and 5 interior/exterior trapped workers.
 - **Camera View Angles:**
   - `Follow (3rd Person)`: Smooth cinematic chase camera following the hexacopter.

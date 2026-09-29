@@ -339,7 +339,7 @@ class SensorFusionEngine {
     const vector = new THREE.Vector3().copy(worldPos);
     vector.project(this.camera);
 
-    const isVisible = (vector.z < 1.0 && vector.x >= -1.1 && vector.x <= 1.1 && vector.y >= -1.1 && vector.y <= 1.1);
+    const isVisible = (vector.z >= -1.0 && vector.z <= 1.0 && vector.x >= -1.1 && vector.x <= 1.1 && vector.y >= -1.1 && vector.y <= 1.1);
 
     const canvas = this.renderer.domElement;
     const x = (vector.x * 0.5 + 0.5) * canvas.clientWidth;
