@@ -19,6 +19,26 @@ class TacticalGisMap {
 
     this.initCanvasSize();
     window.addEventListener('resize', () => this.initCanvasSize());
+
+    // Interactive Click-to-Feed GPS on Tactical Map
+    if (this.canvas) {
+      this.canvas.style.cursor = 'crosshair';
+      this.canvas.title = 'Click anywhere on map to feed custom GPS disaster coordinates to UAV';
+      this.canvas.addEventListener('click', (e) => {
+        const rect = this.canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const world = this.screenToWorld(sx, sy);
+        const gps = this.navigator.meterOffsetToGps(world.x, world.z);
+        this.navigator.feedGpsTargetArea({
+          centerLat: gps.lat,
+          centerLng: gps.lng,
+          widthMeters: 45,
+          lengthMeters: 45,
+          sectorName: `TACTICAL CLICK (${gps.lat.toFixed(4)}°N)`
+        });
+      });
+    }
   }
 
   initCanvasSize() {
@@ -26,6 +46,14 @@ class TacticalGisMap {
     const rect = this.canvas.parentElement.getBoundingClientRect();
     this.canvas.width = rect.width || 380;
     this.canvas.height = rect.height || 280;
+  }
+
+  screenToWorld(sx, sy) {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const wx = (sx - cx) / this.scale + this.mapCenter.x;
+    const wz = (sy - cy) / this.scale + this.mapCenter.z;
+    return { x: wx, z: wz };
   }
 
   worldToScreen(wx, wz) {
@@ -106,6 +134,67 @@ class TacticalGisMap {
 
     // Draw Safe Ground Extraction Route for NDRF Rescue Squads
     this.drawSafeExtractionRoute();
+
+    // Draw Fed GPS Target Disaster Geofence
+    if (this.navigator.fedGpsSector && this.navigator.fedGpsSector.isFed) {
+      const sec = this.navigator.fedGpsSector;
+      const nw = this.worldToScreen(sec.minX, sec.minZ);
+      const ne = this.worldToScreen(sec.maxX, sec.minZ);
+      const se = this.worldToScreen(sec.maxX, sec.maxZ);
+      const sw = this.worldToScreen(sec.minX, sec.maxZ);
+
+      // Shaded Target Search Zone
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+      ctx.beginPath();
+      ctx.moveTo(nw.x, nw.y);
+      ctx.lineTo(ne.x, ne.y);
+      ctx.lineTo(se.x, se.y);
+      ctx.lineTo(sw.x, sw.y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Glowing dashed border
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([6, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Corner GPS Lat/Lng markers
+      ctx.fillStyle = '#38bdf8';
+      [nw, ne, se, sw].forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Labels
+      ctx.font = '8px "JetBrains Mono"';
+      ctx.fillStyle = '#7dd3fc';
+      if (sec.cornerCoordinates && sec.cornerCoordinates.length >= 4) {
+        ctx.fillText(`NW: ${sec.cornerCoordinates[0].lat.toFixed(5)}°N, ${sec.cornerCoordinates[0].lng.toFixed(5)}°E`, nw.x + 4, nw.y - 4);
+        ctx.fillText(`SE: ${sec.cornerCoordinates[2].lat.toFixed(5)}°N, ${sec.cornerCoordinates[2].lng.toFixed(5)}°E`, se.x - 120, se.y + 11);
+      }
+      ctx.fillStyle = '#f1f5f9';
+      ctx.font = 'bold 9px "JetBrains Mono"';
+      ctx.fillText(`📍 FED GPS TARGET: ${sec.sectorName}`, nw.x + 4, nw.y + 12);
+
+      // Draw Planned Waypoint Grid Lines inside the fed sector
+      if (this.navigator.waypoints.length > 1) {
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.45)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        const startWp = this.worldToScreen(this.navigator.waypoints[0].x, this.navigator.waypoints[0].z);
+        ctx.moveTo(startWp.x, startWp.y);
+        for (let w = 1; w < this.navigator.waypoints.length; w++) {
+          const pt = this.worldToScreen(this.navigator.waypoints[w].x, this.navigator.waypoints[w].z);
+          ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
 
     // Draw Flight Breadcrumb Trail
     if (this.trail.length > 1) {

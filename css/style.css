@@ -1045,3 +1045,180 @@ body {
   box-shadow: 0 0 8px #f97316;
 }
 
+/* =======================================================
+   AUTHENTIC 3D LIDAR SLAM CAMERA VIEWPORT HUD OVERLAY
+   ======================================================= */
+.lidar-filter {
+  filter: contrast(130%) brightness(112%);
+}
+
+.lidar-hud-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Central LiDAR Scanning Reticle */
+.lidar-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 240px;
+  height: 240px;
+}
+
+.lidar-crosshair-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(0, 240, 255, 0.9);
+  border-radius: 50%;
+}
+
+.lidar-circle-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120px;
+  height: 120px;
+  transform: translate(-50%, -50%);
+  border: 1px dashed rgba(56, 189, 248, 0.4);
+  border-radius: 50%;
+}
+
+.lidar-circle-outer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 220px;
+  height: 220px;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid rgba(56, 189, 248, 0.5);
+  border-radius: 50%;
+}
+
+.lidar-bearing-mark {
+  position: absolute;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+.lidar-bearing-mark.n { top: 2px; left: 50%; transform: translateX(-50%); }
+.lidar-bearing-mark.s { bottom: 2px; left: 50%; transform: translateX(-50%); }
+.lidar-bearing-mark.w { left: 4px; top: 50%; transform: translateY(-50%); }
+.lidar-bearing-mark.e { right: 4px; top: 50%; transform: translateY(-50%); }
+
+/* Top LiDAR Status Bar */
+.lidar-status-bar {
+  position: absolute;
+  top: 48px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(10, 16, 28, 0.85);
+  padding: 6px 14px;
+  border-radius: 6px;
+  border-left: 3px solid #00f0ff;
+  backdrop-filter: blur(8px);
+}
+
+.lidar-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #00f0ff;
+  letter-spacing: 0.05em;
+}
+
+/* Left Telemetry Box */
+.lidar-telemetry-box {
+  position: absolute;
+  bottom: 30px;
+  left: 18px;
+  background: rgba(10, 16, 28, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.lidar-stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.68rem;
+}
+
+.lidar-stat-label {
+  color: #94a3b8;
+}
+
+.lidar-stat-val {
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+/* Right Side: Rainbow Elevation False-Color Legend */
+.lidar-elevation-legend {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(10, 16, 28, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 6px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(8px);
+}
+
+.legend-title {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #38bdf8;
+  writing-mode: vertical-lr;
+  transform: rotate(180deg);
+  letter-spacing: 0.05em;
+}
+
+.legend-scale-bar {
+  width: 14px;
+  height: 140px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(
+    to bottom,
+    #ef4444 0%,   /* High: Red */
+    #f59e0b 25%,  /* Mid-high: Yellow */
+    #10b981 50%,  /* Mid: Green */
+    #06b6d4 75%,  /* Low-mid: Cyan */
+    #1d4ed8 100%  /* Ground: Deep Blue */
+  );
+}
+
+.legend-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 140px;
+  font-size: 0.58rem;
+  color: #cbd5e1;
+}
+
+

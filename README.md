@@ -40,20 +40,15 @@ This repository contains the complete interactive 3D WebGL simulation built to d
   - `🎥 4K Optical + AI`: Real-time YOLOv8 bounding boxes with confidence scores & triage labels.
   - `🔥 FLIR Thermal IR`: Radiometric false-color Ironbow colormap isolating human body heat (36.5°C-37.5°C) through smoke/darkness.
   - `👁️ Night Vision`: Generation-III green phosphor night vision amplification.
-  - `📡 3D LiDAR SLAM`: Real geometric raycasting against physical scene obstacles, dynamic 3D detection cone, and concentric ground range rings (10m, 20m, and 25m Max Range limit) with proximity color coding (Red = Alert <4m, Yellow = Caution 4-10m, Cyan = Safe >10m).
+  - `📡 3D LiDAR SLAM Camera`: Authentic multi-beam LiDAR vision featuring an **Inverted Detection Cone** (apex at UAV sensor, projecting downward), 3,600-point dense cloud with **Rainbow Elevation False-Coloring** (Blue ground $\rightarrow$ Cyan $\rightarrow$ Green $\rightarrow$ Yellow $\rightarrow$ Red elevated rubble), 16 rotating laser beams, concentric range rings, and dedicated **LiDAR Camera HUD Overlay** with elevation scale bar & FAST-LIO2 SLAM telemetry.
   - `☣️ Gas Plume Gradient`: Volumetric chemical dispersion plume showing concentration (PPM).
-- **Disaster Environments (Scenario Selector):**
-  - `🏚️ Urban Earthquake Collapse`: Deep roadway fissures, buckled pavement, leaning cracked commercial tower, pancaked residential complex, 45+ concrete rubble blocks, fallen utility poles with tangled wires, crushed car, and 5 trapped/stranded survivors.
-  - `🌊 Assam Flash Flood Inundation`: Churning muddy brown floodwaters with dynamic animated ripples, traditional Assam elevated stilt houses ("chang ghar"), tin-roof huts, partially inundated school building, submerged truck and auto-rickshaw, floating logs/debris, banana vegetation, rescue boat, bamboo raft, and 5 rooftop/raft-stranded survivors.
-  - `☣️ Industrial Gas & Factory Blast`: Chemical tank farm with ruptured pressurized spherical vessel, yellow pipe racks, fractured pipeline manifolds, massive toxic plumes (Ammonia & Methane), AND a fully accessible FACTORY INTERIOR with breached walls, heavy boiler machinery, generator cabinets, fallen cable trays, elevated catwalk, and 5 interior/exterior trapped workers.
-- **Camera View Angles:**
-  - `Follow (3rd Person)`: Smooth cinematic chase camera following the hexacopter.
-  - `Gimbal FPV`: Pilot HUD with crosshairs, pitch ladder, and laser rangefinder.
-  - `Top-Down Survey`: 90-degree satellite disaster mapping view.
-  - `360° Orbit`: Free orbit around the drone to inspect the frame and sensor gimbal.
-  - `PIP Inset Preview`: Picture-in-picture secondary camera (click to swap viewports!).
+- **🛰️ Disaster GPS Target Sector Feeding (Header & Tactical GIS):**
+  - `📍 Feed Disaster GPS`: Upload exact disaster coordinates (Lat, Lng, Width, Length) to command the UAV to search strictly within that fed disaster area.
+  - `Quick-Load Presets`: Assam Flood Sector (26.1448°N), Earthquake Collapse (28.6142°N), Chemical Tank Farm (21.6265°N).
+  - `3D Holographic Geofence`: Renders glowing boundary perimeter lines, transparent vertical boundary fence curtain, and 4 corner GPS antenna beacon pylons with Lat/Lng telemetry tags.
+  - `Tactical GIS Click-to-Feed`: Click directly anywhere on the 2D Tactical GIS Map to instantly drop and lock a custom GPS disaster search target!
 - **Autonomous Flight Modes (Bottom Footer Bar):**
-  - `Grid Lawnmower`: Systematic parallel coverage search pattern over the 160m² disaster sector.
+  - `Grid Lawnmower`: Systematic parallel coverage search pattern over the fed disaster sector.
   - `Spiral Recon`: Expanding Archimedean spiral search centered on the disaster epicenter.
   - `GPS-Denied UWB`: Indoor low-altitude tunnel navigation guided by 4 UWB anchor stations.
   - `Manual (WASD)`: Direct pilot teleoperation (`W/A/S/D` = Move, `Up/Down` = Altitude, `Q/E` = Yaw).
@@ -61,7 +56,7 @@ This repository contains the complete interactive 3D WebGL simulation built to d
   - `⭐ SIH Presentation Mode`: Guided 6-step automated showcase tailored for SIH evaluators.
   - `📄 NDRF SITREP`: Instant printable/exportable official disaster situation report with dynamic sector name.
   - `📦 Drop Emergency Medkit`: Deploys first aid and LoRa beacon over discovered victims.
-  - `🔊 Web Audio`: Synthesizes dynamic drone motor pitch and hazard radar beeps.
+  - `🔊 Web Audio`: Synthesizes dynamic drone motor pitch, lightning thunder rumble, and hazard radar beeps.
 
 ---
 

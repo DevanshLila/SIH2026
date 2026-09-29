@@ -58,6 +58,11 @@
           ⭐ SIH Presentation Mode
         </button>
 
+        <!-- Feed Disaster GPS Mission Upload -->
+        <button id="btn-open-gps-modal" class="btn-tactical btn-gps" style="border-color:#38bdf8; background:rgba(2, 132, 199, 0.25);" title="Upload GPS coordinates / disaster search sector to UAV">
+          📍 Feed Disaster GPS
+        </button>
+
         <!-- NDRF SITREP Report Generator -->
         <button id="btn-generate-sitrep" class="btn-tactical btn-primary" title="Export official NDRF disaster situational report">
           📄 NDRF SITREP
@@ -87,6 +92,66 @@
         <!-- Thermal / NVG Shader Scanline Overlays -->
         <div id="thermal-scanlines" class="thermal-scanline-overlay"></div>
         <div id="nvg-filter" class="nvg-overlay"></div>
+
+        <!-- Authentic 3D LiDAR SLAM Camera Viewport HUD Overlay -->
+        <div id="lidar-hud-overlay" class="lidar-hud-overlay" style="display:none;">
+          <div class="lidar-reticle">
+            <div class="lidar-crosshair-center"></div>
+            <div class="lidar-circle-outer"></div>
+            <div class="lidar-circle-inner"></div>
+            <div class="lidar-bearing-mark n">N</div>
+            <div class="lidar-bearing-mark s">S</div>
+            <div class="lidar-bearing-mark e">E</div>
+            <div class="lidar-bearing-mark w">W</div>
+          </div>
+          
+          <!-- LiDAR Top Status Bar -->
+          <div class="lidar-status-bar">
+            <div class="lidar-badge">📡 3D MULTI-BEAM LiDAR SLAM (VELODYNE 32-BEAM)</div>
+            <div class="mono" style="font-size:0.72rem; color:#38bdf8;">PULSE: 905nm DUAL-RETURN &bull; 600 kHz &bull; INVERTED SCAN CONE</div>
+          </div>
+
+          <!-- Left Side: Real-time Point Cloud & SLAM Telemetry -->
+          <div class="lidar-telemetry-box">
+            <div class="lidar-stat-row">
+              <span class="lidar-stat-label">POINT DENSITY:</span>
+              <span id="lidar-hud-points-count" class="lidar-stat-val" style="color:#00f0ff;">3,240 PTS</span>
+            </div>
+            <div class="lidar-stat-row">
+              <span class="lidar-stat-label">ANGULAR RES:</span>
+              <span class="lidar-stat-val">0.1° AZIMUTH</span>
+            </div>
+            <div class="lidar-stat-row">
+              <span class="lidar-stat-label">DETECTION CONE:</span>
+              <span class="lidar-stat-val" style="color:#38bdf8;">360° &times; 35° (INVERTED)</span>
+            </div>
+            <div class="lidar-stat-row">
+              <span class="lidar-stat-label">MAX RANGE:</span>
+              <span class="lidar-stat-val">25.0 METERS</span>
+            </div>
+            <div class="lidar-stat-row">
+              <span class="lidar-stat-label">SLAM ALGORITHM:</span>
+              <span class="lidar-stat-val" style="color:#10b981;">FAST-LIO2 / LIO-SAM</span>
+            </div>
+            <div class="lidar-stat-row">
+              <span class="lidar-stat-label">ODOMETRY DRIFT:</span>
+              <span class="lidar-stat-val" style="color:#10b981;">&plusmn;0.015 m (FUSED)</span>
+            </div>
+          </div>
+
+          <!-- Right Side: Rainbow Elevation False-Color Scale Bar -->
+          <div class="lidar-elevation-legend">
+            <div class="legend-title">ELEVATION (Z)</div>
+            <div class="legend-scale-bar"></div>
+            <div class="legend-labels">
+              <span>+10m</span>
+              <span>+7.0m</span>
+              <span>+4.0m</span>
+              <span>+1.5m</span>
+              <span>0.0m</span>
+            </div>
+          </div>
+        </div>
 
         <!-- Viewport Topbar Toolbar: Sensor Switcher & Camera Switcher -->
         <div class="viewport-topbar">
@@ -399,6 +464,101 @@
         </div>
         <div id="sitrep-modal-content">
           <!-- Populated by dashboard.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: GPS Disaster Sector Upload & Autonomous Mission Feeder -->
+    <div id="gps-modal" class="modal-overlay">
+      <div class="modal-box" style="max-width: 720px;">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span>🛰️ Upload Disaster GPS Coordinates & Search Sector (ROS2 Nav2)</span>
+          </div>
+          <button class="modal-close" id="btn-close-gps-modal">&times;</button>
+        </div>
+        
+        <div style="font-size:0.8rem; color:#cbd5e1; line-height:1.5; display:flex; flex-direction:column; gap:16px;">
+          <div style="background:#1e293b; padding:10px 14px; border-radius:6px; border-left:4px solid #38bdf8;">
+            <p style="margin:0; font-weight:600; color:#f1f5f9;">Autonomous Search Sector Geofencing</p>
+            <p style="margin:4px 0 0 0; font-size:0.75rem; color:#94a3b8;">Feed real-world GPS coordinates to command the hexacopter to execute an optimized ROS2 lawnmower coverage search strictly inside that target disaster sector.</p>
+          </div>
+
+          <!-- Quick Load Preset Disaster Zones -->
+          <div>
+            <div style="font-size:0.75rem; font-weight:700; color:#38bdf8; margin-bottom:8px; letter-spacing:0.04em;">
+              1. QUICK-LOAD DISASTER SECTORS:
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+              <button class="btn-tactical preset-gps-btn" data-lat="26.144800" data-lng="91.736500" data-w="55" data-l="55" data-alt="14" data-name="Assam Flood Inundation Hamlet" style="text-align:left; padding:8px 10px;">
+                <div style="font-weight:700; color:#38bdf8;">🌊 Assam Flood Sector</div>
+                <div style="font-size:0.68rem; color:#94a3b8; font-family:'JetBrains Mono';">26.1448°N, 91.7365°E</div>
+                <div style="font-size:0.65rem; color:#10b981;">55m &times; 55m Grid</div>
+              </button>
+              <button class="btn-tactical preset-gps-btn" data-lat="28.614200" data-lng="77.208500" data-w="60" data-l="50" data-alt="15" data-name="Urban Earthquake Collapse Zone" style="text-align:left; padding:8px 10px;">
+                <div style="font-weight:700; color:#f59e0b;">🏚️ Earthquake Ruin</div>
+                <div style="font-size:0.68rem; color:#94a3b8; font-family:'JetBrains Mono';">28.6142°N, 77.2085°E</div>
+                <div style="font-size:0.65rem; color:#10b981;">60m &times; 50m Grid</div>
+              </button>
+              <button class="btn-tactical preset-gps-btn" data-lat="21.626500" data-lng="73.003500" data-w="48" data-l="44" data-alt="13" data-name="Chemical Explosion Tank Farm" style="text-align:left; padding:8px 10px;">
+                <div style="font-weight:700; color:#ef4444;">☣️ Chemical Tank Blast</div>
+                <div style="font-size:0.68rem; color:#94a3b8; font-family:'JetBrains Mono';">21.6265°N, 73.0035°E</div>
+                <div style="font-size:0.65rem; color:#10b981;">48m &times; 44m Grid</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Manual GPS Coordinate Feeding -->
+          <div>
+            <div style="font-size:0.75rem; font-weight:700; color:#38bdf8; margin-bottom:8px; letter-spacing:0.04em;">
+              2. MANUAL DISASTER GPS COORDINATE INPUT:
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+              <div>
+                <label style="font-size:0.7rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:600;">CENTER LATITUDE (°N)</label>
+                <input id="input-gps-lat" type="number" step="0.000001" value="26.144500" class="btn-tactical" style="width:100%; text-align:left; font-family:'JetBrains Mono'; background:#0a101d;">
+              </div>
+              <div>
+                <label style="font-size:0.7rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:600;">CENTER LONGITUDE (°E)</label>
+                <input id="input-gps-lng" type="number" step="0.000001" value="91.736200" class="btn-tactical" style="width:100%; text-align:left; font-family:'JetBrains Mono'; background:#0a101d;">
+              </div>
+              <div>
+                <label style="font-size:0.7rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:600;">SECTOR WIDTH &times; LENGTH (METERS)</label>
+                <div style="display:flex; gap:8px;">
+                  <input id="input-gps-w" type="number" value="50" min="20" max="110" class="btn-tactical" style="width:50%; text-align:center; font-family:'JetBrains Mono'; background:#0a101d;" placeholder="Width (m)">
+                  <input id="input-gps-l" type="number" value="50" min="20" max="110" class="btn-tactical" style="width:50%; text-align:center; font-family:'JetBrains Mono'; background:#0a101d;" placeholder="Length (m)">
+                </div>
+              </div>
+              <div>
+                <label style="font-size:0.7rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:600;">SEARCH ALTITUDE &bull; TRACK SPACING</label>
+                <div style="display:flex; gap:8px;">
+                  <input id="input-gps-alt" type="number" value="14" min="6" max="30" class="btn-tactical" style="width:50%; text-align:center; font-family:'JetBrains Mono'; background:#0a101d;" placeholder="Alt (m)">
+                  <input id="input-gps-spacing" type="number" value="9" min="4" max="20" class="btn-tactical" style="width:50%; text-align:center; font-family:'JetBrains Mono'; background:#0a101d;" placeholder="Spacing">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- File Upload Simulator -->
+          <div style="border: 1px dashed rgba(56, 189, 248, 0.4); border-radius:6px; padding:12px; text-align:center; background:rgba(0,0,0,0.3);">
+            <div style="font-size:1.2rem;">📁</div>
+            <div style="font-size:0.78rem; font-weight:600; color:#f1f5f9; margin-top:2px;">Upload GPS Mission File (.KML / .WAYPOINTS / .JSON)</div>
+            <div style="font-size:0.68rem; color:#94a3b8; margin-top:2px;">Directly import QGroundControl / Mission Planner survey polygon files</div>
+            <input type="file" id="input-gps-file" accept=".kml,.waypoints,.json" style="display:none;">
+            <button class="btn-tactical" style="margin-top:6px; font-size:0.72rem; padding:4px 12px;" onclick="document.getElementById('input-gps-file').click()">Select Mission File</button>
+            <span id="gps-file-name" style="font-size:0.72rem; color:#10b981; margin-left:8px; font-family:'JetBrains Mono';"></span>
+          </div>
+
+          <div style="font-size:0.72rem; color:#38bdf8; background:rgba(56, 189, 248, 0.1); padding:8px 12px; border-radius:4px;">
+            💡 <strong>Tactical GIS Tip:</strong> You can also directly <strong>click anywhere on the 2D Tactical GIS Map</strong> to instantly drop and lock a custom GPS disaster search target!
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+            <button class="btn-tactical" id="btn-cancel-gps-modal">Cancel</button>
+            <button class="btn-tactical btn-primary" id="btn-submit-gps-upload" style="background:linear-gradient(135deg, #0284c7, #2563eb); font-weight:700; padding:8px 18px;">
+              🚀 UPLOAD & LOCK TO UAV
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -31,8 +31,236 @@ class AutonomousNavigator {
       yawRight: false
     };
 
+    // Real-World GPS Reference Frame (Incident Command Datum)
+    this.gpsReference = {
+      baseLat: 26.144500, // Guwahati Assam Disaster Epicenter
+      baseLng: 91.736200,
+      metersPerDegLat: 111320,
+      metersPerDegLng: 111320 * Math.cos(26.144500 * Math.PI / 180)
+    };
+
+    // Active Fed GPS Target Disaster Sector
+    this.fedGpsSector = {
+      isFed: false,
+      sectorName: 'DEFAULT EMERGENCY GRID',
+      minX: -32,
+      maxX: 32,
+      minZ: -30,
+      maxZ: 30,
+      centerLat: 26.144500,
+      centerLng: 91.736200,
+      widthMeters: 64,
+      lengthMeters: 60,
+      altitude: 14,
+      laneSpacing: 10,
+      cornerCoordinates: []
+    };
+
+    // 3D Holographic Geofence Mesh in the scene
+    this.geofenceGroup = new THREE.Group();
+    this.drone.scene.add(this.geofenceGroup);
+
     this.initKeyboardControls();
     this.generateLawnmowerGrid();
+  }
+
+  meterOffsetToGps(x, z) {
+    const lat = this.gpsReference.baseLat - (z / this.gpsReference.metersPerDegLat);
+    const lng = this.gpsReference.baseLng + (x / this.gpsReference.metersPerDegLng);
+    return { lat, lng };
+  }
+
+  gpsToMeterOffset(lat, lng) {
+    const x = (lng - this.gpsReference.baseLng) * this.gpsReference.metersPerDegLng;
+    const z = -(lat - this.gpsReference.baseLat) * this.gpsReference.metersPerDegLat;
+    return { x, z };
+  }
+
+  feedGpsTargetArea({ centerLat, centerLng, widthMeters = 50, lengthMeters = 50, altitude = 14, laneSpacing = 9, sectorName = 'CUSTOM DISASTER SECTOR' }) {
+    // 1. Calculate local coordinates from GPS
+    const centerOffset = this.gpsToMeterOffset(centerLat, centerLng);
+    const halfW = widthMeters / 2;
+    const halfL = lengthMeters / 2;
+
+    const minX = Math.max(-55, Math.min(55, centerOffset.x - halfW));
+    const maxX = Math.max(-55, Math.min(55, centerOffset.x + halfW));
+    const minZ = Math.max(-55, Math.min(55, centerOffset.z - halfL));
+    const maxZ = Math.max(-55, Math.min(55, centerOffset.z + halfL));
+
+    const nwGps = this.meterOffsetToGps(minX, minZ);
+    const neGps = this.meterOffsetToGps(maxX, minZ);
+    const seGps = this.meterOffsetToGps(maxX, maxZ);
+    const swGps = this.meterOffsetToGps(minX, maxZ);
+
+    this.fedGpsSector = {
+      isFed: true,
+      sectorName: sectorName,
+      minX: minX,
+      maxX: maxX,
+      minZ: minZ,
+      maxZ: maxZ,
+      centerLat: centerLat,
+      centerLng: centerLng,
+      widthMeters: maxX - minX,
+      lengthMeters: maxZ - minZ,
+      altitude: altitude,
+      laneSpacing: laneSpacing,
+      cornerCoordinates: [
+        { name: 'NW', ...nwGps },
+        { name: 'NE', ...neGps },
+        { name: 'SE', ...seGps },
+        { name: 'SW', ...swGps }
+      ]
+    };
+
+    // 2. Generate Optimized ROS2 Nav2 Lawnmower Grid inside the fed sector
+    const waypoints = [];
+    const stepZ = Math.max(6, laneSpacing);
+    let forward = true;
+
+    for (let z = minZ; z <= maxZ; z += stepZ) {
+      if (forward) {
+        waypoints.push(new THREE.Vector3(minX, altitude, z));
+        waypoints.push(new THREE.Vector3(maxX, altitude, z));
+      } else {
+        waypoints.push(new THREE.Vector3(maxX, altitude, z));
+        waypoints.push(new THREE.Vector3(minX, altitude, z));
+      }
+      forward = !forward;
+    }
+
+    this.waypoints = waypoints;
+    this.currentWaypointIndex = 0;
+    this.navMode = 'GRID';
+    this.totalSectorAreaSqM = (maxX - minX) * (maxZ - minZ);
+    this.searchAreaCoveredSqM = 0;
+
+    // 3. Update Drone Telemetry
+    this.drone.telemetry.satellites = 24;
+    this.drone.telemetry.flightMode = `AUTO: GPS SECTOR [${sectorName}]`;
+
+    // 4. Update 3D Holographic Geofence in the Scene
+    this.update3DGeofence();
+
+    // 5. Trigger Visual Notification Toast
+    const toast = document.getElementById('tour-toast');
+    const toastText = document.getElementById('tour-toast-text');
+    if (toast && toastText) {
+      toastText.innerHTML = `📍 <strong>DISASTER GPS UPLOADED:</strong> Sector locked to <strong>${centerLat.toFixed(5)}°N, ${centerLng.toFixed(5)}°E</strong> (${(maxX - minX).toFixed(0)}m &times; ${(maxZ - minZ).toFixed(0)}m). Autonomous coverage initiated!`;
+      toast.style.display = 'flex';
+      setTimeout(() => {
+        if (!window.droneApp.tourActive && toast) toast.style.display = 'none';
+      }, 5500);
+    }
+
+    return this.fedGpsSector;
+  }
+
+  update3DGeofence() {
+    // Clear old geofence meshes
+    while (this.geofenceGroup.children.length > 0) {
+      const child = this.geofenceGroup.children[0];
+      this.geofenceGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+
+    if (!this.fedGpsSector.isFed) return;
+
+    const { minX, maxX, minZ, maxZ, altitude } = this.fedGpsSector;
+
+    // 1. Glowing Perimeter Boundary Wireframe
+    const corners = [
+      new THREE.Vector3(minX, 0.2, minZ),
+      new THREE.Vector3(maxX, 0.2, minZ),
+      new THREE.Vector3(maxX, 0.2, maxZ),
+      new THREE.Vector3(minX, 0.2, maxZ),
+      new THREE.Vector3(minX, 0.2, minZ)
+    ];
+
+    const perimeterGeo = new THREE.BufferGeometry().setFromPoints(corners);
+    const perimeterMat = new THREE.LineBasicMaterial({
+      color: 0x38bdf8,
+      linewidth: 3
+    });
+    const perimeterLine = new THREE.Line(perimeterGeo, perimeterMat);
+    this.geofenceGroup.add(perimeterLine);
+
+    // Upper boundary at search altitude
+    const topCorners = corners.map(p => new THREE.Vector3(p.x, altitude + 2, p.z));
+    const topGeo = new THREE.BufferGeometry().setFromPoints(topCorners);
+    const topMat = new THREE.LineDashedMaterial({
+      color: 0x00f0ff,
+      dashSize: 3,
+      gapSize: 2
+    });
+    const topLine = new THREE.Line(topGeo, topMat);
+    topLine.computeLineDistances();
+    this.geofenceGroup.add(topLine);
+
+    // 2. Holographic Boundary Fence Curtain Walls (Semi-transparent glowing planes)
+    const wallHeight = altitude + 2;
+    const wallMat = new THREE.MeshBasicMaterial({
+      color: 0x0284c7,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    const w = maxX - minX;
+    const l = maxZ - minZ;
+
+    // North wall
+    const nWallGeo = new THREE.PlaneGeometry(w, wallHeight);
+    const nWall = new THREE.Mesh(nWallGeo, wallMat);
+    nWall.position.set((minX + maxX) / 2, wallHeight / 2, minZ);
+    this.geofenceGroup.add(nWall);
+
+    // South wall
+    const sWall = new THREE.Mesh(nWallGeo, wallMat);
+    sWall.position.set((minX + maxX) / 2, wallHeight / 2, maxZ);
+    this.geofenceGroup.add(sWall);
+
+    // West wall
+    const wWallGeo = new THREE.PlaneGeometry(l, wallHeight);
+    const wWall = new THREE.Mesh(wWallGeo, wallMat);
+    wWall.rotation.y = Math.PI / 2;
+    wWall.position.set(minX, wallHeight / 2, (minZ + maxZ) / 2);
+    this.geofenceGroup.add(wWall);
+
+    // East wall
+    const eWall = new THREE.Mesh(wWallGeo, wallMat);
+    eWall.rotation.y = Math.PI / 2;
+    eWall.position.set(maxX, wallHeight / 2, (minZ + maxZ) / 2);
+    this.geofenceGroup.add(eWall);
+
+    // 3. Corner Telemetry Beacon Pylons (4 vertical antenna towers)
+    const cornerPts = [
+      { x: minX, z: minZ },
+      { x: maxX, z: minZ },
+      { x: maxX, z: maxZ },
+      { x: minX, z: maxZ }
+    ];
+
+    const pylonGeo = new THREE.CylinderGeometry(0.12, 0.18, wallHeight, 8);
+    const pylonMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      metalness: 0.85
+    });
+
+    const beaconGeo = new THREE.SphereGeometry(0.35, 12, 12);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+
+    cornerPts.forEach(pt => {
+      const pylon = new THREE.Mesh(pylonGeo, pylonMat);
+      pylon.position.set(pt.x, wallHeight / 2, pt.z);
+      this.geofenceGroup.add(pylon);
+
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+      beacon.position.set(pt.x, wallHeight, pt.z);
+      this.geofenceGroup.add(beacon);
+    });
   }
 
   setNavMode(mode) {
