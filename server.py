@@ -10,6 +10,13 @@ import webbrowser
 import os
 import sys
 
+# Ensure UTF-8 printing in Windows console
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 PORT = 8000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
