@@ -38,7 +38,7 @@ class SensorFusionEngine {
     this.lidarSweepLine = null;
     this.lidarScanAngle = 0;
     this.pointHistory = [];
-    this.maxPoints = 3600; // High-density authentic 3D SLAM point cloud
+    this.maxPoints = 4800; // Ultra high-density authentic 3D SLAM point cloud
 
     this.initLidarSystem();
   }
@@ -63,7 +63,7 @@ class SensorFusionEngine {
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const material = new THREE.PointsMaterial({
-      size: 0.38,
+      size: 0.42,
       vertexColors: true,
       transparent: true,
       opacity: 0.95,
@@ -241,7 +241,7 @@ class SensorFusionEngine {
     const colliders = this.environment.obstacleColliders;
     if (!colliders || colliders.length === 0) return;
 
-    const raysPerFrame = 64; // High density scan
+    const raysPerFrame = 96; // Ultra high-density scan
     const verticalElevationBands = [-0.85, -0.65, -0.45, -0.30, -0.15, -0.05, 0.05, 0.15];
     const origin = dronePos.clone().add(new THREE.Vector3(0, -0.35, 0));
 
@@ -444,11 +444,17 @@ class SensorFusionEngine {
     if (mode === 'THERMAL') {
       container.classList.add('thermal-filter');
       if (thermalScan) thermalScan.style.display = 'block';
+      this.environment.setLidarVisionMode(false);
     } else if (mode === 'NVG') {
       if (nvgOverlay) nvgOverlay.style.display = 'block';
+      this.environment.setLidarVisionMode(false);
     } else if (mode === 'LIDAR') {
       container.classList.add('lidar-filter');
       if (lidarOverlay) lidarOverlay.style.display = 'block';
+      // Enable authentic dark void and fluorescent wireframe obstacle matrix
+      this.environment.setLidarVisionMode(true);
+    } else {
+      this.environment.setLidarVisionMode(false);
     }
   }
 }

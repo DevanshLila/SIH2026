@@ -218,6 +218,15 @@
           <div class="status-dot"></div>
           <span id="weather-hud-banner-text" style="font-size:0.8rem; font-weight:600;"></span>
         </div>
+
+        <!-- Survivor Rescue Squad Dispatch Loitering Alert Banner -->
+        <div id="rescue-dispatch-banner" class="rescue-dispatch-banner" style="display:none;">
+          <div class="rescue-dispatch-header">
+            <span class="pulse-beacon"></span>
+            <span class="dispatch-title">🚨 VICTIM LOCATED &bull; AUTONOMOUS LOITERING ACTIVE</span>
+          </div>
+          <div id="rescue-dispatch-content" class="rescue-dispatch-content"></div>
+        </div>
       </section>
 
       <!-- Right Column: Tactical Ground Control Station (GCS) Dashboard -->
@@ -364,6 +373,21 @@
                 <span>Disaster Sector Radar (160m &times; 160m)</span>
                 <span style="color:#00f0ff;">LIVE GIS</span>
               </div>
+              
+              <!-- Manual Area Allotment Action Helper -->
+              <div style="background:rgba(15,23,42,0.9); border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:0.95rem;">🎯</span>
+                  <div>
+                    <div style="font-size:0.72rem; font-weight:700; color:#38bdf8;">MANUAL GPS AREA ALLOTMENT</div>
+                    <div style="font-size:0.63rem; color:#94a3b8;">Click & drag on radar map to allot circular search radius</div>
+                  </div>
+                </div>
+                <button id="btn-clear-gps-sector" class="btn-tactical" style="padding:3px 8px; font-size:0.65rem; border-color:#64748b;" title="Clear allotted search area">
+                  ↺ Reset
+                </button>
+              </div>
+
               <div id="gis-map-container">
                 <canvas id="gis-canvas"></canvas>
               </div>
