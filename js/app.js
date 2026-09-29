@@ -442,11 +442,11 @@ class App {
 
     const steps = [
       {
-        text: '📍 STEP 1/6: Autonomous Takeoff & ROS2 Lawnmower Coverage Grid Initialized',
+        text: '📍 STEP 1/6: Autonomous Takeoff & Circular Spiral Recon Search Initialized',
         action: () => {
           this.cameraMode = 'FOLLOW';
           this.sensors.setSensorMode('RGB');
-          this.navigator.setNavMode('GRID');
+          this.navigator.setNavMode('SPIRAL');
           this.drone.takeoff(15);
         },
         duration: 5000

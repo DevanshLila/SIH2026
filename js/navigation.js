@@ -78,8 +78,13 @@ class AutonomousNavigator {
     this.geofenceGroup = new THREE.Group();
     this.drone.scene.add(this.geofenceGroup);
 
+    // Active 3D LiDAR Collision Avoidance Raycaster
+    this.avoidanceRaycaster = new THREE.Raycaster();
+    this.isAvoidingObstacle = false;
+
+    this.navMode = 'SPIRAL';
     this.initKeyboardControls();
-    this.generateLawnmowerGrid();
+    this.generateSpiralPath();
   }
 
   meterOffsetToGps(x, z) {
@@ -638,12 +643,97 @@ class AutonomousNavigator {
   }
 
   checkObstacleAvoidance() {
-    // Proximity repulsion bubble
+    if (!this.drone.telemetry.isFlying || this.drone.telemetry.flightMode === 'LANDING') return;
+
     const dronePos = this.drone.group.position;
     const minSafeAltitude = 1.2;
 
-    if (dronePos.y < minSafeAltitude && this.drone.telemetry.isFlying && this.drone.telemetry.flightMode !== 'LANDING') {
-      this.drone.targetPosition.y = minSafeAltitude + 0.5;
+    // 1. Minimum Safe Altitude Clamp
+    if (dronePos.y < minSafeAltitude) {
+      this.drone.targetPosition.y = minSafeAltitude + 0.6;
+    }
+
+    // 2. Active 3D LiDAR Obstacle Collision Avoidance System
+    const colliders = this.environment ? this.environment.obstacleColliders : null;
+    if (!colliders || colliders.length === 0) return;
+
+    // Safety thresholds (industrial hexacopter rotor radius ~0.8m)
+    const criticalStopDist = 2.4; // Absolute physical collision safety barrier
+    const warningScanDist = 5.2; // Anticipatory climb & detour scanning bubble
+
+    // Active flight trajectory heading vector
+    const speedH = Math.hypot(this.drone.velocity.x, this.drone.velocity.z);
+    let fwd = (speedH > 0.4)
+      ? new THREE.Vector3(this.drone.velocity.x, 0, this.drone.velocity.z).normalize()
+      : new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.drone.group.rotation.y);
+
+    // Multi-directional LiDAR safety rays:
+    // Forward, Left 35°, Right 35°, Down-Forward (elevation slope), Straight Down (under-chassis)
+    const scanRays = [
+      { dir: fwd.clone(), weight: 1.2 },
+      { dir: fwd.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.6), weight: 0.9 },
+      { dir: fwd.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.6), weight: 0.9 },
+      { dir: new THREE.Vector3(fwd.x, -0.65, fwd.z).normalize(), weight: 1.1 },
+      { dir: new THREE.Vector3(0, -1, 0), weight: 1.4 }
+    ];
+
+    let closestHit = null;
+    let minDistance = warningScanDist;
+    let avoidanceForce = new THREE.Vector3(0, 0, 0);
+
+    for (let r of scanRays) {
+      this.avoidanceRaycaster.set(dronePos, r.dir);
+      this.avoidanceRaycaster.near = 0.25;
+      this.avoidanceRaycaster.far = warningScanDist;
+
+      const hits = this.avoidanceRaycaster.intersectObjects(colliders, true);
+      if (hits.length > 0) {
+        const hit = hits[0];
+        // Exclude flat baseline ground when drone is at safe altitude
+        if (hit.point.y < 0.45 && dronePos.y > 2.5 && r.dir.y < -0.85) continue;
+
+        if (hit.distance < minDistance) {
+          minDistance = hit.distance;
+          closestHit = hit;
+        }
+
+        // Compute repulsive vector away from collider hit surface
+        const repel = new THREE.Vector3().subVectors(dronePos, hit.point);
+        const intensity = Math.max(0.1, (warningScanDist - hit.distance) / warningScanDist);
+        repel.normalize().multiplyScalar(intensity * r.weight * 3.0);
+        avoidanceForce.add(repel);
+      }
+    }
+
+    // 3. Apply Active Collision Prevention Reaction
+    if (closestHit && minDistance < warningScanDist) {
+      this.isAvoidingObstacle = true;
+
+      // Vertical clearance: climb smoothly over the obstacle
+      const obstacleTop = closestHit.point.y;
+      const safeAltitude = obstacleTop + 3.2; // 3.2m safe clearance above obstacle
+      if (this.drone.targetPosition.y < safeAltitude) {
+        this.drone.targetPosition.y = Math.min(35, safeAltitude);
+      }
+
+      // Horizontal deflection: steer target away from obstacle
+      this.drone.targetPosition.x += avoidanceForce.x * 0.14;
+      this.drone.targetPosition.z += avoidanceForce.z * 0.14;
+
+      // Absolute physical safety bumper: never allow drone body to penetrate inside collider
+      if (closestHit.distance < criticalStopDist) {
+        const pushback = new THREE.Vector3().subVectors(dronePos, closestHit.point).normalize();
+        const penetration = criticalStopDist - closestHit.distance;
+        this.drone.group.position.add(pushback.multiplyScalar(penetration));
+        this.drone.velocity.multiplyScalar(0.45); // Dampen momentum on close approach
+      }
+
+      // Proximity alarm sound
+      if (minDistance < 3.2 && window.droneApp && window.droneApp.gcs) {
+        window.droneApp.gcs.playProximityBeep();
+      }
+    } else {
+      this.isAvoidingObstacle = false;
     }
   }
 

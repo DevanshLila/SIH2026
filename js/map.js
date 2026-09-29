@@ -179,9 +179,9 @@ class TacticalGisMap {
           if (child.geometry) child.geometry.dispose();
           if (child.material) child.material.dispose();
         }
-        this.navigator.generateLawnmowerGrid();
-        this.navigator.navMode = 'GRID';
-        this.drone.telemetry.flightMode = 'AUTO: LAWNMOWER GRID';
+        this.navigator.generateSpiralPath();
+        this.navigator.navMode = 'SPIRAL';
+        this.drone.telemetry.flightMode = 'AUTO: SPIRAL RECON';
 
         const toast = document.getElementById('tour-toast');
         const toastText = document.getElementById('tour-toast-text');

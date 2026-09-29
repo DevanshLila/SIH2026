@@ -234,27 +234,45 @@ class DroneModel {
       this.lidarBeam.rotation.y += 1.8 * delta;
     }
 
-    // 3. Flight physics interpolation toward target
+    // 3. Realistic Autonomous Flight Kinematics & Velocity Modeling
     if (this.telemetry.isFlying) {
-      const posError = new THREE.Vector3().subVectors(this.targetPosition, this.group.position);
-      
-      // Calculate speeds
-      const moveSpeed = 7.5; // m/s
-      const climbSpeed = 4.0; // m/s
-      
-      // Interpolate position
-      const step = new THREE.Vector3(
-        posError.x * Math.min(1, moveSpeed * delta),
-        posError.y * Math.min(1, climbSpeed * delta),
-        posError.z * Math.min(1, moveSpeed * delta)
-      );
+      const dx = this.targetPosition.x - this.group.position.x;
+      const dy = this.targetPosition.y - this.group.position.y;
+      const dz = this.targetPosition.z - this.group.position.z;
+      const distH = Math.hypot(dx, dz);
 
-      this.group.position.add(step);
-      this.velocity.copy(step).divideScalar(Math.max(0.001, delta));
+      // Desired horizontal cruising speed (realistic 6.2 m/s max)
+      const cruiseSpeed = 6.2; // Realistic disaster survey speed
+      let desiredSpeed = 0;
+      let targetVx = 0;
+      let targetVz = 0;
 
-      // Calculate roll/pitch based on horizontal velocity (banking/tilting physics)
-      let targetRoll = -Math.max(-0.4, Math.min(0.4, this.velocity.x * 0.04));
-      let targetPitch = Math.max(-0.4, Math.min(0.4, this.velocity.z * 0.04));
+      if (distH > 0.08) {
+        // Smooth deceleration profile within 2.5m of waypoint
+        desiredSpeed = distH >= 2.5 ? cruiseSpeed : Math.max(0.8, (distH / 2.5) * cruiseSpeed);
+        targetVx = (dx / distH) * desiredSpeed;
+        targetVz = (dz / distH) * desiredSpeed;
+      }
+
+      // Smooth horizontal acceleration (realistic inertia of 14kg industrial hexacopter)
+      const accelRateH = 3.6; // m/s^2
+      this.velocity.x += (targetVx - this.velocity.x) * Math.min(1.0, accelRateH * delta);
+      this.velocity.z += (targetVz - this.velocity.z) * Math.min(1.0, accelRateH * delta);
+
+      // Vertical climb / descent speed (max 3.2 m/s)
+      const climbMax = 3.2;
+      const targetVy = Math.max(-climbMax, Math.min(climbMax, dy * 2.2));
+      const accelRateV = 4.0;
+      this.velocity.y += (targetVy - this.velocity.y) * Math.min(1.0, accelRateV * delta);
+
+      // Integrate position from continuous velocity
+      this.group.position.x += this.velocity.x * delta;
+      this.group.position.y += this.velocity.y * delta;
+      this.group.position.z += this.velocity.z * delta;
+
+      // Realistic banking attitude (roll and pitch proportional to velocity)
+      let targetRoll = -Math.max(-0.35, Math.min(0.35, this.velocity.x * 0.035));
+      let targetPitch = Math.max(-0.35, Math.min(0.35, this.velocity.z * 0.035));
 
       // Dynamic aerodynamic turbulence perturbation
       if (this.windTurbulence.active) {
@@ -263,27 +281,36 @@ class DroneModel {
         const intensity = this.windTurbulence.intensity;
 
         // High-frequency stochastic wind turbulence
-        const turbRoll = (Math.sin(t * 7.1) * 0.06 + Math.cos(t * 13.3) * 0.035) * intensity;
-        const turbPitch = (Math.cos(t * 6.3) * 0.06 + Math.sin(t * 11.7) * 0.035) * intensity;
+        const turbRoll = (Math.sin(t * 7.1) * 0.04 + Math.cos(t * 13.3) * 0.02) * intensity;
+        const turbPitch = (Math.cos(t * 6.3) * 0.04 + Math.sin(t * 11.7) * 0.02) * intensity;
         targetRoll += turbRoll;
         targetPitch += turbPitch;
 
         // Subtle lateral gust drift
-        const gustDrift = Math.sin(t * 3.8) * 0.04 * intensity;
+        const gustDrift = Math.sin(t * 3.8) * 0.02 * intensity;
         this.group.position.x += gustDrift;
 
         // Dynamic motor power draw under turbulence
-        this.telemetry.currentDraw = 26.5 + intensity * 12.0 + Math.sin(t * 8.0) * 2.5;
+        this.telemetry.currentDraw = 26.5 + intensity * 8.0 + Math.sin(t * 8.0) * 1.5;
       } else {
         this.telemetry.currentDraw = 26.5;
       }
       
-      // Smooth attitude
+      // Smooth attitude filtering
       this.group.rotation.z += (targetRoll - this.group.rotation.z) * 0.12;
       this.group.rotation.x += (targetPitch - this.group.rotation.x) * 0.12;
 
-      // Smooth yaw to target
-      this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.08;
+      // Align heading smoothly to direction of travel or target yaw
+      const speedH = Math.hypot(this.velocity.x, this.velocity.z);
+      if (speedH > 1.2 && distH > 1.5) {
+        const headingAngle = Math.atan2(-this.velocity.x, -this.velocity.z);
+        let diff = headingAngle - this.group.rotation.y;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        this.group.rotation.y += diff * 0.08;
+      } else {
+        this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.08;
+      }
 
       // Update telemetry
       this.telemetry.groundSpeed = Math.hypot(this.velocity.x, this.velocity.z);

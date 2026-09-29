@@ -188,9 +188,9 @@ class WeatherSystem {
         break;
 
       case 'dense_fog':
-        // Dramatic dense smoke & ash fog
+        // Mild smoke & ash haze (visibility maintained > 65%)
         if (this.scene.fog) {
-          this.scene.fog.density = 0.046; // Heavy occlusion
+          this.scene.fog.density = 0.0085; // Light atmospheric haze
           this.scene.fog.color.setHex(0x272c35); // Smoky ash grey
         }
         this.ashMesh.visible = true;
@@ -201,16 +201,16 @@ class WeatherSystem {
         this.drone.setWindTurbulence(true, 0.15);
 
         if (hudBanner && hudBannerText) {
-          hudBannerText.innerHTML = '⚠️ <strong>DENSE SMOKE FOG ACTIVE</strong> &bull; Optical visibility degraded to 18% &bull; Switch to <strong>FLIR Thermal IR</strong> or <strong>3D LiDAR SLAM</strong>';
+          hudBannerText.innerHTML = '⚠️ <strong>DENSE SMOKE FOG ACTIVE</strong> &bull; Optical visibility: <strong>68%</strong> (Clear sightlines preserved &bull; FLIR Thermal/LiDAR recommended)';
           hudBanner.style.display = 'flex';
           hudBanner.className = 'weather-hud-banner fog-alert';
         }
         break;
 
       case 'rain_storm':
-        // Monsoon downpour & storm atmosphere
+        // Monsoon downpour & storm atmosphere (visibility maintained > 65%)
         if (this.scene.fog) {
-          this.scene.fog.density = 0.024;
+          this.scene.fog.density = 0.0065;
           this.scene.fog.color.setHex(0x131e33);
         }
         this.rainMesh.visible = true;
@@ -223,16 +223,16 @@ class WeatherSystem {
         this.lightningTimer = 0;
 
         if (hudBanner && hudBannerText) {
-          hudBannerText.innerHTML = '🌧️ <strong>SEVERE MONSOON STORM</strong> &bull; Heavy precipitation &bull; Rain streaks active &bull; Crosswind: 32 km/h';
+          hudBannerText.innerHTML = '🌧️ <strong>SEVERE MONSOON STORM</strong> &bull; Optical visibility: <strong>76%</strong> &bull; Rain streaks active &bull; Crosswind: 32 km/h';
           hudBanner.style.display = 'flex';
           hudBanner.className = 'weather-hud-banner storm-alert';
         }
         break;
 
       case 'high_wind':
-        // Gale Force Wind & Severe Turbulence
+        // Gale Force Wind & Severe Turbulence (visibility maintained > 65%)
         if (this.scene.fog) {
-          this.scene.fog.density = 0.016;
+          this.scene.fog.density = 0.004;
           this.scene.fog.color.setHex(0x1c1917);
         }
         this.windDebrisMesh.visible = true;
@@ -243,7 +243,7 @@ class WeatherSystem {
         this.drone.setWindTurbulence(true, 0.85);
 
         if (hudBanner && hudBannerText) {
-          hudBannerText.innerHTML = '💨 <strong>GALE FORCE TURBULENCE (48.5 km/h)</strong> &bull; Autonomous flight controller applying high-torque motor trim';
+          hudBannerText.innerHTML = '💨 <strong>GALE FORCE TURBULENCE (48.5 km/h)</strong> &bull; Optical visibility: <strong>86%</strong> &bull; Autonomous flight controller applying high-torque motor trim';
           hudBanner.style.display = 'flex';
           hudBanner.className = 'weather-hud-banner wind-alert';
         }
@@ -423,8 +423,8 @@ class WeatherSystem {
         if (elSpeed) elSpeed.textContent = `${this.windState.speedKmh.toFixed(1)} km/h`;
         if (elDir) elDir.textContent = `${this.windState.directionName} (${this.windState.directionDeg}°)`;
         if (elVis) {
-          elVis.textContent = '18% (CRITICAL)';
-          elVis.style.color = '#ff3344';
+          elVis.textContent = '68% (SMOKE HAZE)';
+          elVis.style.color = '#38bdf8';
         }
         if (elComp) {
           elComp.textContent = 'LOW DRIFT (0.2m)';
@@ -438,8 +438,8 @@ class WeatherSystem {
         if (elSpeed) elSpeed.textContent = `${this.windState.gustFactor.toFixed(1)} km/h (Gale)`;
         if (elDir) elDir.textContent = `${this.windState.directionName} (${this.windState.directionDeg}°)`;
         if (elVis) {
-          elVis.textContent = '42% (DEGRADED)';
-          elVis.style.color = '#fbbf24';
+          elVis.textContent = '76% (RAIN STREAKS)';
+          elVis.style.color = '#38bdf8';
         }
         if (elComp) {
           elComp.textContent = 'ATTITUDE TRIM ±3.2°';
@@ -453,8 +453,8 @@ class WeatherSystem {
         if (elSpeed) elSpeed.textContent = `${this.windState.gustFactor.toFixed(1)} km/h (HIGH)`;
         if (elDir) elDir.textContent = `${this.windState.directionName} (${this.windState.directionDeg}°)`;
         if (elVis) {
-          elVis.textContent = '78% (BLOWING DUST)';
-          elVis.style.color = '#38bdf8';
+          elVis.textContent = '86% (AIRBORNE DUST)';
+          elVis.style.color = '#10b981';
         }
         if (elComp) {
           elComp.textContent = 'HIGH TORQUE TRIM ±5.8°';
