@@ -42,6 +42,14 @@
         <button id="btn-day-night" class="btn-tactical" style="padding: 0.35rem 0.65rem;" title="Toggle Day / Night environmental lighting">
           ☀️ Day Mode
         </button>
+
+        <!-- Dynamic Weather Selector -->
+        <select id="select-weather" class="btn-tactical" style="padding: 0.35rem 0.65rem; cursor:pointer;" title="Dynamic Atmospheric & Weather Simulation">
+          <option value="clear">☀️ Clear Atmosphere</option>
+          <option value="dense_fog">🌫️ Dense Smoke Fog (FLIR Advantage)</option>
+          <option value="rain_storm">🌧️ Monsoon Rain & Lightning</option>
+          <option value="high_wind">💨 Severe Wind Turbulence (Gale 48 km/h)</option>
+        </select>
       </div>
 
       <div class="header-right">
@@ -139,6 +147,12 @@
           <div class="status-dot" style="background:#c084fc; box-shadow:0 0 10px #c084fc;"></div>
           <span id="tour-toast-text" style="font-size:0.82rem; font-weight:600;">Tour Active...</span>
         </div>
+
+        <!-- Weather Condition HUD Banner -->
+        <div id="weather-hud-banner" class="weather-hud-banner" style="display:none;">
+          <div class="status-dot"></div>
+          <span id="weather-hud-banner-text" style="font-size:0.8rem; font-weight:600;"></span>
+        </div>
       </section>
 
       <!-- Right Column: Tactical Ground Control Station (GCS) Dashboard -->
@@ -221,6 +235,32 @@
                 <div style="text-align:right;">
                   <div style="font-size:0.65rem; color:#94a3b8;">SENSOR CORE</div>
                   <div class="mono" style="font-size:0.75rem; color:#38bdf8;">MQ-4 / MQ-7 / PID</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Environmental Weather & Wind Dynamics (SIH Sensor Fusion) -->
+            <div class="telemetry-card" style="border-left: 3px solid #38bdf8;">
+              <div class="card-title">
+                <span>Atmospheric & Weather Radar</span>
+                <span id="val-weather-condition" class="mono" style="color:#38bdf8; font-weight:700;">☀️ CLEAR</span>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
+                <div style="background:rgba(0,0,0,0.3); padding:6px 8px; border-radius:4px;">
+                  <div style="font-size:0.62rem; color:#94a3b8;">WIND SPEED / GUST</div>
+                  <div id="val-wind-speed" class="mono" style="font-size:0.85rem; font-weight:700; color:#38bdf8;">4.8 km/h</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:6px 8px; border-radius:4px;">
+                  <div style="font-size:0.62rem; color:#94a3b8;">WIND VECTOR</div>
+                  <div id="val-wind-dir" class="mono" style="font-size:0.85rem; font-weight:700; color:#cbd5e1;">WNW (295°)</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:6px 8px; border-radius:4px;">
+                  <div style="font-size:0.62rem; color:#94a3b8;">VISIBILITY INDEX</div>
+                  <div id="val-visibility-pct" class="mono" style="font-size:0.85rem; font-weight:700; color:#10b981;">100% (OPTIMAL)</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:6px 8px; border-radius:4px;">
+                  <div style="font-size:0.62rem; color:#94a3b8;">IMU STABILIZATION</div>
+                  <div id="val-imu-comp" class="mono" style="font-size:0.85rem; font-weight:700; color:#10b981;">NOMINAL</div>
                 </div>
               </div>
             </div>
@@ -482,6 +522,7 @@
   <!-- JavaScript Modules -->
   <script src="js/drone.js"></script>
   <script src="js/environment.js"></script>
+  <script src="js/weather.js"></script>
   <script src="js/sensors.js"></script>
   <script src="js/navigation.js"></script>
   <script src="js/map.js"></script>

@@ -14,6 +14,7 @@ class App {
 
     this.drone = null;
     this.environment = null;
+    this.weather = null;
     this.sensors = null;
     this.navigator = null;
     this.gcs = null;
@@ -113,7 +114,11 @@ class App {
     this.gcs = new TacticalGcsDashboard(this.drone, this.environment, this.sensors, this.navigator);
     window.gcs = this.gcs;
 
-    // 6. 2D Tactical GIS Map
+    // 6. Dynamic Environmental Weather System
+    this.weather = new WeatherSystem(this.scene, this.drone, this.gcs);
+    window.weather = this.weather;
+
+    // 7. 2D Tactical GIS Map
     this.gisMap = new TacticalGisMap('gis-canvas', this.drone, this.environment, this.navigator);
 
     // Auto-takeoff on startup to immediately engage judges
@@ -172,6 +177,14 @@ class App {
     const btnDayNight = document.getElementById('btn-day-night');
     if (btnDayNight) {
       btnDayNight.addEventListener('click', () => this.toggleDayNightMode());
+    }
+
+    // Dynamic Weather Selector
+    const weatherSelect = document.getElementById('select-weather');
+    if (weatherSelect) {
+      weatherSelect.addEventListener('change', (e) => {
+        if (this.weather) this.weather.setWeather(e.target.value);
+      });
     }
 
     // Emergency Takeoff / Land Toggle
@@ -410,7 +423,7 @@ class App {
     if (this.isNightMode) {
       if (btn) btn.innerHTML = '🌙 Night Mode';
       this.scene.background.setHex(0x020409);
-      if (this.scene.fog) {
+      if (this.scene.fog && (!this.weather || this.weather.currentMode === 'clear')) {
         this.scene.fog.color.setHex(0x020409);
         this.scene.fog.density = 0.016;
       }
@@ -440,7 +453,7 @@ class App {
     } else {
       if (btn) btn.innerHTML = '☀️ Day Mode';
       this.scene.background.setHex(0x0a1426);
-      if (this.scene.fog) {
+      if (this.scene.fog && (!this.weather || this.weather.currentMode === 'clear')) {
         this.scene.fog.color.setHex(0x0a1426);
         this.scene.fog.density = 0.009;
       }
@@ -468,6 +481,7 @@ class App {
     // 1. Update Subsystems
     this.drone.update(delta);
     this.environment.update(delta);
+    if (this.weather) this.weather.update(delta, this.drone.position);
     this.navigator.update(delta);
     this.sensors.update(delta);
     this.gcs.update(delta);

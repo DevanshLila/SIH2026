@@ -43,6 +43,13 @@ class DroneModel {
       heading: 0
     };
 
+    // Aerodynamic wind turbulence & gust response
+    this.windTurbulence = {
+      active: false,
+      intensity: 0,
+      time: 0
+    };
+
     this.create3DModel();
     this.scene.add(this.group);
   }
@@ -246,12 +253,34 @@ class DroneModel {
       this.velocity.copy(step).divideScalar(Math.max(0.001, delta));
 
       // Calculate roll/pitch based on horizontal velocity (banking/tilting physics)
-      const targetRoll = -Math.max(-0.4, Math.min(0.4, this.velocity.x * 0.04));
-      const targetPitch = Math.max(-0.4, Math.min(0.4, this.velocity.z * 0.04));
+      let targetRoll = -Math.max(-0.4, Math.min(0.4, this.velocity.x * 0.04));
+      let targetPitch = Math.max(-0.4, Math.min(0.4, this.velocity.z * 0.04));
+
+      // Dynamic aerodynamic turbulence perturbation
+      if (this.windTurbulence.active) {
+        this.windTurbulence.time += delta;
+        const t = this.windTurbulence.time;
+        const intensity = this.windTurbulence.intensity;
+
+        // High-frequency stochastic wind turbulence
+        const turbRoll = (Math.sin(t * 7.1) * 0.06 + Math.cos(t * 13.3) * 0.035) * intensity;
+        const turbPitch = (Math.cos(t * 6.3) * 0.06 + Math.sin(t * 11.7) * 0.035) * intensity;
+        targetRoll += turbRoll;
+        targetPitch += turbPitch;
+
+        // Subtle lateral gust drift
+        const gustDrift = Math.sin(t * 3.8) * 0.04 * intensity;
+        this.group.position.x += gustDrift;
+
+        // Dynamic motor power draw under turbulence
+        this.telemetry.currentDraw = 26.5 + intensity * 12.0 + Math.sin(t * 8.0) * 2.5;
+      } else {
+        this.telemetry.currentDraw = 26.5;
+      }
       
       // Smooth attitude
-      this.group.rotation.z += (targetRoll - this.group.rotation.z) * 0.1;
-      this.group.rotation.x += (targetPitch - this.group.rotation.x) * 0.1;
+      this.group.rotation.z += (targetRoll - this.group.rotation.z) * 0.12;
+      this.group.rotation.x += (targetPitch - this.group.rotation.x) * 0.12;
 
       // Smooth yaw to target
       this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.08;
@@ -266,7 +295,8 @@ class DroneModel {
 
       // Battery discharge simulation
       if (this.telemetry.batteryPercent > 10) {
-        this.telemetry.batteryPercent -= 0.004 * delta;
+        const dischargeRate = this.windTurbulence.active ? 0.006 : 0.004;
+        this.telemetry.batteryPercent -= dischargeRate * delta;
         this.telemetry.batteryVoltage = 22.2 + (this.telemetry.batteryPercent / 100) * 3.0;
       }
     } else {
@@ -324,6 +354,11 @@ class DroneModel {
       this.spotlight.visible = on;
     }
     return this.spotlight.visible;
+  }
+
+  setWindTurbulence(active, intensity = 0.5) {
+    this.windTurbulence.active = active;
+    this.windTurbulence.intensity = intensity;
   }
 }
 

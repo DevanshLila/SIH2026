@@ -31,6 +31,11 @@ This repository contains the complete interactive 3D WebGL simulation built to d
 - **☀️ Day / 🌙 Night Mode Toggle (Header):**
   - `Day Mode`: Crisp natural daylight, ambient illumination, realistic directional sun shadows.
   - `Night Mode`: Realistic low-light dark atmosphere, cold moon glow, flashing red/blue emergency vehicle beacons, street light sparks, factory floodlights, automatic UAV search spotlight activation, and enhanced FLIR Thermal / NVG sensor utility!
+- **🌪️ Dynamic Weather & Turbulence System (Header Dropdown):**
+  - `☀️ Clear Atmosphere`: Baseline clear skies, calm wind (4.8 km/h), optimal optical visibility.
+  - `🌫️ Dense Smoke Fog`: Heavy post-blast smoke & airborne ash particulates (1,400+ particles), optical camera visibility reduced to 18% showcasing the mission-critical advantage of **FLIR Thermal IR** and **3D LiDAR SLAM**.
+  - `🌧️ Monsoon Rain Storm & Lightning`: 2,800+ falling rain streak particles, ground splash ripples, dynamic atmospheric lightning strobe flashes with synthesized Web Audio thunder rumble, crosswind 32 km/h.
+  - `💨 Severe Gale Wind & Turbulence`: Aerodynamic crosswind (48.5 km/h, gusts up to 62 km/h), high-speed horizontal debris particles, physical stochastic drone attitude wobble ($\pm 5.8^\circ$ trim), and autonomous high-torque motor power compensation (38A draw).
 - **Sensor Mode Toolbar (Top of 3D Viewport):**
   - `🎥 4K Optical + AI`: Real-time YOLOv8 bounding boxes with confidence scores & triage labels.
   - `🔥 FLIR Thermal IR`: Radiometric false-color Ironbow colormap isolating human body heat (36.5°C-37.5°C) through smoke/darkness.
