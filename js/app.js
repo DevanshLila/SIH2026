@@ -526,29 +526,29 @@ class App {
 
     if (this.isNightMode) {
       if (btn) btn.innerHTML = '🌙 Night Mode';
-      this.scene.background.setHex(0x020409);
+      this.scene.background.setHex(0x071120); // Deep moonlit indigo night sky
       if (this.scene.fog && (!this.weather || this.weather.currentMode === 'clear')) {
-        this.scene.fog.color.setHex(0x020409);
-        this.scene.fog.density = 0.016;
+        this.scene.fog.color.setHex(0x071120);
+        this.scene.fog.density = 0.0055; // Crisp, crystal clear night atmosphere
       }
 
-      this.ambientLight.color.setHex(0x0f172a);
-      this.ambientLight.intensity = 0.22;
+      this.ambientLight.color.setHex(0x38527a); // Luminous cool blue ambient fill
+      this.ambientLight.intensity = 0.95; // Everything clearly visible and sharp!
 
-      this.sunLight.color.setHex(0x1e293b);
-      this.sunLight.intensity = 0.35; // Faint moonlight
+      this.sunLight.color.setHex(0xa5c9eb); // Directional silver moonlight
+      this.sunLight.intensity = 1.35; // Sharp moonlit highlights & casting shadows
 
-      this.hemiLight.color.setHex(0x1e293b);
-      this.hemiLight.groundColor.setHex(0x020409);
-      this.hemiLight.intensity = 0.25;
+      this.hemiLight.color.setHex(0x38bdf8);
+      this.hemiLight.groundColor.setHex(0x1e293b);
+      this.hemiLight.intensity = 0.8;
 
-      // Intelligent Night Mode UAV reaction: Auto-spotlight
+      // Intelligent Night Mode UAV reaction: High-power Searchlight & Floodlight
       this.drone.toggleSpotlight(true);
       this.environment.setNightMode(true);
 
       // Display prompt
       if (toast && toastText) {
-        toastText.textContent = '🌙 Night Mode: Use FLIR Thermal IR or NVG Mode to detect survivors through pitch darkness!';
+        toastText.textContent = '🌙 Lunar Night Mode: High-power searchlight active. Switch to NVG or FLIR Thermal for tactical night vision!';
         toast.style.display = 'flex';
         setTimeout(() => {
           if (!this.tourActive && toast) toast.style.display = 'none';

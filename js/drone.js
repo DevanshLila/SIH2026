@@ -11,6 +11,7 @@ class DroneModel {
     this.propellers = [];
     this.strobeLights = [];
     this.spotlight = null;
+    this.floodlight = null;
     this.lidarBeam = null;
     
     // Physics and state
@@ -201,12 +202,19 @@ class DroneModel {
     sniffer.position.set(0, -0.25, 0.55);
     this.group.add(sniffer);
 
-    // 5. Downward Search & Rescue Spotlight
-    this.spotlight = new THREE.SpotLight(0xffffff, 2.5, 45, Math.PI / 5, 0.45, 1.2);
-    this.spotlight.position.set(0, -0.5, 0);
-    this.spotlight.target.position.set(0, -25, 5);
+    // 5. High-Power Search & Rescue Dual Spotlight Array (12,000 Lumens Equivalent)
+    this.spotlight = new THREE.SpotLight(0xf8fafc, 12.0, 75, Math.PI / 3.2, 0.55, 1.1);
+    this.spotlight.position.set(0, -0.4, 0.2);
+    this.spotlight.target.position.set(0, -25, 4);
+    this.spotlight.castShadow = true;
     this.group.add(this.spotlight);
     this.group.add(this.spotlight.target);
+
+    // Downward Flood illuminator attached to drone chassis
+    this.floodlight = new THREE.PointLight(0xe0f2fe, 3.5, 45, 1.2);
+    this.floodlight.position.set(0, -0.6, 0);
+    this.floodlight.visible = false;
+    this.group.add(this.floodlight);
 
     // 6. Dynamic LiDAR Scanning Visual Cone
     const lidarConeGeo = new THREE.ConeGeometry(8, 22, 24, 1, true);
@@ -241,28 +249,29 @@ class DroneModel {
       const dz = this.targetPosition.z - this.group.position.z;
       const distH = Math.hypot(dx, dz);
 
-      // Desired horizontal cruising speed (realistic 6.2 m/s max)
-      const cruiseSpeed = 6.2; // Realistic disaster survey speed
+      // Desired horizontal cruising speed (strictly between 15 - 20 m/s as requested)
+      const isManual = (this.telemetry.flightMode && this.telemetry.flightMode.includes('MANUAL'));
+      const cruiseSpeed = isManual ? 18.0 : 17.5; // High-speed rapid disaster survey (~63 km/h)
       let desiredSpeed = 0;
       let targetVx = 0;
       let targetVz = 0;
 
       if (distH > 0.08) {
-        // Smooth deceleration profile within 2.5m of waypoint
-        desiredSpeed = distH >= 2.5 ? cruiseSpeed : Math.max(0.8, (distH / 2.5) * cruiseSpeed);
+        // Smooth deceleration profile within 4.5m of waypoint
+        desiredSpeed = distH >= 4.5 ? cruiseSpeed : Math.max(3.5, (distH / 4.5) * cruiseSpeed);
         targetVx = (dx / distH) * desiredSpeed;
         targetVz = (dz / distH) * desiredSpeed;
       }
 
-      // Smooth horizontal acceleration (realistic inertia of 14kg industrial hexacopter)
-      const accelRateH = 3.6; // m/s^2
+      // Responsive horizontal acceleration (6.8 m/s^2 for 15-20 m/s high performance)
+      const accelRateH = 6.8; // m/s^2
       this.velocity.x += (targetVx - this.velocity.x) * Math.min(1.0, accelRateH * delta);
       this.velocity.z += (targetVz - this.velocity.z) * Math.min(1.0, accelRateH * delta);
 
-      // Vertical climb / descent speed (max 3.2 m/s)
-      const climbMax = 3.2;
-      const targetVy = Math.max(-climbMax, Math.min(climbMax, dy * 2.2));
-      const accelRateV = 4.0;
+      // Vertical climb / descent speed (max 5.5 m/s)
+      const climbMax = 5.5;
+      const targetVy = Math.max(-climbMax, Math.min(climbMax, dy * 2.5));
+      const accelRateV = 5.0;
       this.velocity.y += (targetVy - this.velocity.y) * Math.min(1.0, accelRateV * delta);
 
       // Integrate position from continuous velocity
@@ -380,6 +389,9 @@ class DroneModel {
       this.spotlight.visible = !this.spotlight.visible;
     } else {
       this.spotlight.visible = on;
+    }
+    if (this.floodlight) {
+      this.floodlight.visible = this.spotlight.visible;
     }
     return this.spotlight.visible;
   }

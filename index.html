@@ -90,8 +90,22 @@
         </div>
 
         <!-- Thermal / NVG Shader Scanline Overlays -->
-        <div id="thermal-scanlines" class="thermal-scanline-overlay"></div>
-        <div id="nvg-filter" class="nvg-overlay"></div>
+        <!-- Tactical Military Gen-3 NVG HUD Overlay -->
+        <div id="nvg-filter" class="nvg-overlay">
+          <div class="nvg-status-bar">
+            <span class="nvg-badge">👁️ GEN-3 AUTO-GATED PHOSPHOR NVG</span>
+            <span class="mono" style="color:#4ade80;">GAIN: 68dB [AMPLIFIED 2.5&times;] &bull; IR ILLUM: ACTIVE &bull; 850nm</span>
+          </div>
+          <div class="nvg-reticle">
+            <div class="nvg-ring-outer"></div>
+            <div class="nvg-ring-inner"></div>
+            <div class="nvg-cross-h"></div>
+            <div class="nvg-cross-v"></div>
+          </div>
+          <div class="nvg-bottom-readout">
+            <span>OPTICAL SENS: 0.0001 LUX &bull; MIL-PRF-49427 &bull; HIGH-DEF NIGHT SIGHT</span>
+          </div>
+        </div>
 
         <!-- Authentic 3D LiDAR SLAM Camera Viewport HUD Overlay -->
         <div id="lidar-hud-overlay" class="lidar-hud-overlay" style="display:none;">

@@ -13,7 +13,7 @@ class AutonomousNavigator {
     this.navMode = 'GRID'; // 'GRID', 'SPIRAL', 'UWB_DENIED', 'MANUAL'
     this.waypoints = [];
     this.currentWaypointIndex = 0;
-    this.waypointTolerance = 2.0; // meters
+    this.waypointTolerance = 3.5; // meters for smooth high-speed (15-20 m/s) trajectory traversal
 
     this.searchAreaCoveredSqM = 0;
     this.totalSectorAreaSqM = 16000;
@@ -632,10 +632,10 @@ class AutonomousNavigator {
     const dronePos = this.drone.group.position;
     const yaw = this.drone.group.rotation.y;
 
-    // Video-game responsive flight dynamics
-    const moveSpeed = 6.8; // m/s forward/strafe cruising velocity
-    const climbSpeed = 3.6; // m/s vertical climb rate
-    const yawRate = 2.4; // rad/s rotation agility
+    // Video-game responsive flight dynamics (between 15 - 20 m/s)
+    const moveSpeed = 18.0; // m/s forward/strafe cruising velocity (between 15 - 20 m/s)
+    const climbSpeed = 5.0; // m/s vertical climb rate
+    const yawRate = 2.6; // rad/s rotation agility
 
     // Forward and Right unit vectors aligned with current drone yaw heading
     const forwardVector = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);

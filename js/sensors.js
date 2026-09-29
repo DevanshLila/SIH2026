@@ -436,7 +436,7 @@ class SensorFusionEngine {
     const lidarOverlay = document.getElementById('lidar-hud-overlay');
 
     // Reset post-processing effects
-    container.classList.remove('thermal-filter', 'lidar-filter');
+    container.classList.remove('thermal-filter', 'lidar-filter', 'nvg-filter');
     if (thermalScan) thermalScan.style.display = 'none';
     if (nvgOverlay) nvgOverlay.style.display = 'none';
     if (lidarOverlay) lidarOverlay.style.display = 'none';
@@ -446,6 +446,7 @@ class SensorFusionEngine {
       if (thermalScan) thermalScan.style.display = 'block';
       this.environment.setLidarVisionMode(false);
     } else if (mode === 'NVG') {
+      container.classList.add('nvg-filter');
       if (nvgOverlay) nvgOverlay.style.display = 'block';
       this.environment.setLidarVisionMode(false);
     } else if (mode === 'LIDAR') {
