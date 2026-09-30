@@ -31,7 +31,7 @@ class App {
     this.sunDir = new THREE.Vector3(0.52, 0.72, 0.45).normalize();
     this.moonDir = new THREE.Vector3(-0.55, 0.68, -0.48).normalize();
 
-    this.cameraMode = 'FOLLOW'; // 'FOLLOW', 'FPV', 'TOPDOWN', 'ORBIT'
+    this.cameraMode = 'ISO'; // 'ISO', 'FOLLOW', 'FPV', 'TOPDOWN', 'ORBIT'
     this.clock = new THREE.Clock();
 
     this.orbitAngle = 0;
@@ -59,9 +59,10 @@ class App {
     this.scene.background = new THREE.Color(0x38bdf8);
     this.scene.fog = new THREE.FogExp2(0x93c5fd, 0.0032);
 
-    // 2. Primary Camera (Extended far plane for sky dome and celestial objects)
+    // 2. Primary Camera (Elevated Isometric Survey framing the disaster zone)
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-    this.camera.position.set(0, 18, 32);
+    this.camera.position.set(24, 34, 38);
+    this.camera.lookAt(-2, 2, -3);
 
     // 3. Main WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -253,8 +254,10 @@ class App {
     const pipWin = document.getElementById('pip-window');
     if (pipWin) {
       pipWin.addEventListener('click', () => {
-        if (this.cameraMode === 'FPV') this.cameraMode = 'FOLLOW';
-        else this.cameraMode = 'FPV';
+        if (this.cameraMode === 'FPV') this.cameraMode = 'ISO';
+        else if (this.cameraMode === 'ISO') this.cameraMode = 'FPV';
+        else if (this.cameraMode === 'FOLLOW') this.cameraMode = 'FPV';
+        else this.cameraMode = 'ISO';
         document.querySelectorAll('.cam-btn').forEach(b => {
           b.classList.toggle('active', b.dataset.cam === this.cameraMode);
         });
@@ -285,18 +288,28 @@ class App {
     const yaw = this.drone.group.rotation.y;
 
     if (this.cameraMode === 'FOLLOW') {
-      // Third-person smooth follow
-      const offsetDist = 14;
-      const offsetHeight = 6.5;
+      // Elevated third-person smooth follow overlooking drone and disaster
+      const offsetDist = 15;
+      const offsetHeight = 8.0;
       const targetCamX = dronePos.x - Math.sin(yaw) * offsetDist;
       const targetCamZ = dronePos.z - Math.cos(yaw) * offsetDist;
       const targetCamY = dronePos.y + offsetHeight;
 
       this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
-      this.camera.lookAt(dronePos.x, dronePos.y + 1.0, dronePos.z);
+      this.camera.lookAt(dronePos.x, dronePos.y + 0.5, dronePos.z);
+    } else if (this.cameraMode === 'ISO') {
+      // Elevated isometric survey perspective overlooking the disaster zone
+      const isoDist = 34;
+      const isoHeight = 30;
+      const targetCamX = dronePos.x + 24;
+      const targetCamY = dronePos.y + isoHeight;
+      const targetCamZ = dronePos.z + isoDist;
+
+      this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
+      this.camera.lookAt(dronePos.x - 2, dronePos.y + 0.5, dronePos.z - 3);
     } else if (this.cameraMode === 'FPV') {
       // First Person Gimbal View looking forward-down
-      this.camera.position.set(dronePos.x, dronePos.y - 0.35, dronePos.z);
+      this.camera.position.set(dronePos.x, dronePos.y - 0.45, dronePos.z);
       const lookDist = 25;
       const targetLook = new THREE.Vector3(
         dronePos.x + Math.sin(yaw) * lookDist,
@@ -305,31 +318,38 @@ class App {
       );
       this.camera.lookAt(targetLook);
     } else if (this.cameraMode === 'TOPDOWN') {
-      // Orthographic survey view from 45m altitude
+      // Orthographic survey view from 48m altitude
       this.camera.position.lerp(new THREE.Vector3(dronePos.x, 48, dronePos.z + 0.1), 0.1);
       this.camera.lookAt(dronePos.x, 0, dronePos.z);
     } else if (this.cameraMode === 'ORBIT') {
       // Slow rotation around drone
       this.orbitAngle += 0.005;
-      const r = 20;
+      const r = 24;
       this.camera.position.set(
         dronePos.x + Math.cos(this.orbitAngle) * r,
-        dronePos.y + 9,
+        dronePos.y + 12,
         dronePos.z + Math.sin(this.orbitAngle) * r
       );
       this.camera.lookAt(dronePos);
     }
 
-    // Inset PIP Camera follows opposite perspective (FPV if follow, or Topdown)
+    // Inset PIP Camera follows complementary perspective
+    const pipHeaderTitle = document.getElementById('pip-header-title');
     if (this.pipCamera) {
-      if (this.cameraMode === 'FOLLOW') {
-        this.pipCamera.position.set(dronePos.x, dronePos.y - 0.3, dronePos.z);
+      if (this.cameraMode === 'FOLLOW' || this.cameraMode === 'ISO') {
+        const fwdDist = 22;
+        this.pipCamera.position.set(dronePos.x + Math.sin(yaw) * 0.35, dronePos.y - 0.45, dronePos.z + Math.cos(yaw) * 0.35);
         this.pipCamera.lookAt(
-          dronePos.x + Math.sin(yaw) * 20,
-          Math.max(0, dronePos.y - 10),
-          dronePos.z + Math.cos(yaw) * 20
+          dronePos.x + Math.sin(yaw) * fwdDist,
+          Math.max(0, dronePos.y - 8),
+          dronePos.z + Math.cos(yaw) * fwdDist
         );
+      } else if (this.cameraMode === 'FPV') {
+        if (pipHeaderTitle) pipHeaderTitle.textContent = 'SECONDARY INSET FEED [ISOMETRIC SURVEY]';
+        this.pipCamera.position.set(dronePos.x + 24, dronePos.y + 28, dronePos.z + 34);
+        this.pipCamera.lookAt(dronePos.x - 2, dronePos.y + 0.5, dronePos.z - 3);
       } else {
+        if (pipHeaderTitle) pipHeaderTitle.textContent = 'SECONDARY INSET FEED [TOPDOWN]';
         this.pipCamera.position.set(dronePos.x, 40, dronePos.z + 0.1);
         this.pipCamera.lookAt(dronePos.x, 0, dronePos.z);
       }
@@ -432,6 +452,13 @@ class App {
     this.navigator.setNavMode('GRID');
     this.gisMap.trail = [];
     this.sensors.pointHistory = [];
+    if (this.sensors) {
+      this.sensors.activeDetections = [];
+      this.sensors.gasReading.ppm = 18;
+      this.sensors.gasReading.peakPpm = 18;
+      this.sensors.gasReading.type = 'BASELINE ATMOSPHERE';
+      this.sensors.gasReading.status = 'NORMAL';
+    }
     if (this.gcs) this.gcs.updateTriageTable();
   }
 
@@ -824,11 +851,38 @@ class App {
           this.scene.fog.density = 0.0038;
         }
       } else {
-        // Earthquake
+        // Realistic 3D Earthquake Simulation: strong daylight, cool blue/turquoise ambient shadows, subtle dust haze
+        this.scene.background.setHex(0x38bdf8);
+        this.sunLight.color.setHex(0xfffdf5);
+        this.sunLight.intensity = 1.65;
+
+        this.ambientLight.color.setHex(0xbfdbfe);
+        this.ambientLight.intensity = 0.60;
+
+        this.hemiLight.color.setHex(0x38bdf8);
+        this.hemiLight.groundColor.setHex(0x1e3a5f);
+        this.hemiLight.intensity = 0.45;
+
         if (this.scene.fog) {
-          this.scene.fog.color.setHex(0x93c5fd);
-          this.scene.fog.density = 0.0034;
+          this.scene.fog.color.setHex(0xb8d5e5);
+          this.scene.fog.density = 0.0018;
         }
+      }
+    }
+
+    // Update HUD Tactical Disaster Tag
+    const hudDisasterTitle = document.getElementById('hud-disaster-title');
+    const hudDisasterMetric = document.getElementById('hud-disaster-metric');
+    if (hudDisasterTitle && hudDisasterMetric) {
+      if (scenario === 'flash_flood') {
+        hudDisasterTitle.textContent = 'FLOOD & TSUNAMI SAR // BRAHMAPUTRA BASIN';
+        hudDisasterMetric.textContent = 'STAGE +4.2m';
+      } else if (scenario === 'chemical_fire') {
+        hudDisasterTitle.textContent = 'INDUSTRIAL GAS & CHEMICAL BLAST // SECTOR 7';
+        hudDisasterMetric.textContent = 'CH4 / CO TOXIC PLUME';
+      } else {
+        hudDisasterTitle.textContent = 'EARTHQUAKE DISASTER SIMULATION // ZONE ALPHA-4';
+        hudDisasterMetric.textContent = 'M7.2 AFTERMATH';
       }
     }
   }
@@ -901,11 +955,17 @@ class App {
     this.updateCamera();
 
     // 4. Render WebGL scene
+    const isMainFPV = (this.cameraMode === 'FPV');
+    if (isMainFPV && this.drone && this.drone.group) this.drone.group.visible = false;
     this.renderer.render(this.scene, this.camera);
+    if (isMainFPV && this.drone && this.drone.group) this.drone.group.visible = true;
 
     // 5. Render Inset PIP scene
     if (this.pipRenderer && this.pipCamera) {
+      const isPipGimbal = (this.cameraMode === 'FOLLOW' || this.cameraMode === 'ISO');
+      if (isPipGimbal && this.drone && this.drone.group) this.drone.group.visible = false;
       this.pipRenderer.render(this.scene, this.pipCamera);
+      if (isPipGimbal && this.drone && this.drone.group) this.drone.group.visible = true;
     }
   }
 }

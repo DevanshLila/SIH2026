@@ -93,7 +93,8 @@
 
           <!-- Camera Angles -->
           <div class="camera-angle-group">
-            <button class="cam-btn active" data-cam="FOLLOW">Follow (3rd)</button>
+            <button class="cam-btn active" data-cam="ISO">Isometric Survey</button>
+            <button class="cam-btn" data-cam="FOLLOW">Follow (3rd)</button>
             <button class="cam-btn" data-cam="FPV">Gimbal FPV</button>
             <button class="cam-btn" data-cam="TOPDOWN">Top-Down Survey</button>
             <button class="cam-btn" data-cam="ORBIT">360° Orbit</button>
@@ -107,6 +108,14 @@
             <span id="hud-compass-text">HDG: 000° N</span>
             <span class="mono" style="color:#94a3b8;">FOV: 84°</span>
             <span class="mono" style="color:#10b981;">NPU: 68 FPS</span>
+          </div>
+
+          <!-- Tactical Disaster Simulation Header Tag -->
+          <div id="hud-disaster-tag" class="hud-disaster-tag">
+            <span class="hazard-badge-dot"></span>
+            <span id="hud-disaster-title" class="hazard-badge-text">EARTHQUAKE DISASTER SIMULATION // ZONE ALPHA-4</span>
+            <span class="hazard-badge-sep">&bull;</span>
+            <span id="hud-disaster-metric" class="mono" style="color:#ef4444; font-weight:700;">M7.2 AFTERMATH</span>
           </div>
 
           <!-- Center Crosshair & Pitch Ladder -->
@@ -128,7 +137,7 @@
         <!-- PIP (Picture-In-Picture) Inset Preview Window -->
         <div id="pip-window" class="pip-preview-window" title="Click to swap camera viewports">
           <div class="pip-header">
-            <span>SECONDARY INSET FEED</span>
+            <span id="pip-header-title">SECONDARY INSET FEED [FPV]</span>
             <span style="font-size:0.6rem;">CLICK TO SWAP</span>
           </div>
           <canvas id="pip-canvas"></canvas>
@@ -278,7 +287,7 @@
                 <span>Victim Registry & Triage Priority</span>
                 <span style="color:#ef4444;">NDRF PROTOCOL</span>
               </div>
-              <div style="overflow-x:auto;">
+              <div class="triage-table-wrapper">
                 <table class="triage-table">
                   <thead>
                     <tr>
@@ -340,7 +349,7 @@
         </div>
         <div class="flight-stat">
           <span class="stat-key">SURVIVORS LOCATED</span>
-          <span id="footer-survivors-count" class="stat-val" style="color:#34d399;">0 / 3</span>
+          <span id="footer-survivors-count" class="stat-val" style="color:#34d399;">0 / 12</span>
         </div>
         <button id="btn-takeoff-land" class="btn-tactical btn-alert" style="padding:0.35rem 0.8rem;">
           🛬 Land
@@ -480,12 +489,12 @@
   </div>
 
   <!-- JavaScript Modules -->
-  <script src="js/drone.js"></script>
-  <script src="js/environment.js"></script>
-  <script src="js/sensors.js"></script>
-  <script src="js/navigation.js"></script>
-  <script src="js/map.js"></script>
-  <script src="js/dashboard.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/drone.js?v=3"></script>
+  <script src="js/environment.js?v=3"></script>
+  <script src="js/sensors.js?v=3"></script>
+  <script src="js/navigation.js?v=3"></script>
+  <script src="js/map.js?v=3"></script>
+  <script src="js/dashboard.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
 </body>
 </html>

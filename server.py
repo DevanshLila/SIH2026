@@ -18,13 +18,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
 
 def main():
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
     os.chdir(DIRECTORY)
     with http.server.ThreadingHTTPServer(("", PORT), Handler) as httpd:
         url = f"http://localhost:{PORT}"
         print("=" * 65)
-        print("  🚁 AERORES-AI: Autonomous Disaster Rescue UAV Simulation")
-        print("  🏆 Team Pegasus | Smart India Hackathon 2026")
-        print(f"  🌐 Running locally at: {url}")
+        print("  AERORES-AI: Autonomous Disaster Rescue UAV Simulation")
+        print("  Team Pegasus | Smart India Hackathon 2026")
+        print(f"  Running locally at: {url}")
         print("=" * 65)
         print("Opening simulation in your web browser...")
         try:

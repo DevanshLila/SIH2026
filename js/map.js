@@ -78,9 +78,13 @@ class TacticalGisMap {
       ctx.stroke();
     }
 
-    // Draw Flood Inundation Overlay if in flash_flood scenario
+    // Draw Scenario-specific GIS tactical overlays
     if (this.environment.currentScenario === 'flash_flood') {
       this.drawFloodOverlay(ctx, w, h);
+    } else if (this.environment.currentScenario === 'earthquake') {
+      this.drawEarthquakeOverlay(ctx, w, h);
+    } else if (this.environment.currentScenario === 'chemical_fire') {
+      this.drawIndustrialOverlay(ctx, w, h);
     }
 
     // Draw Hazard Zones (Gas dispersion radius)
@@ -274,6 +278,131 @@ class TacticalGisMap {
     ctx.fillText('🌊 FLOOD / TSUNAMI ZONE (LEVEL 3)', 12, 20);
   }
 
+  drawEarthquakeOverlay(ctx, w, h) {
+    // 1. Boulevard corridor
+    const bTop = this.worldToScreen(0, -75);
+    const bBot = this.worldToScreen(0, 75);
+    ctx.strokeStyle = 'rgba(71, 85, 105, 0.45)';
+    ctx.lineWidth = 14 * this.scale;
+    ctx.beginPath();
+    ctx.moveTo(bTop.x, bTop.y);
+    ctx.lineTo(bBot.x, bBot.y);
+    ctx.stroke();
+
+    // 2. Cross Avenue
+    const cLeft = this.worldToScreen(-70, 18);
+    const cRight = this.worldToScreen(70, 18);
+    ctx.strokeStyle = 'rgba(71, 85, 105, 0.4)';
+    ctx.lineWidth = 10 * this.scale;
+    ctx.beginPath();
+    ctx.moveTo(cLeft.x, cLeft.y);
+    ctx.lineTo(cRight.x, cRight.y);
+    ctx.stroke();
+
+    // 3. Damaged Building Footprints on GIS Radar
+    const bldgOutlines = [
+      { name: 'Metropolis Tower (Tilted 8°)', x: -28, z: -28, w: 18, d: 16, color: '#f59e0b' },
+      { name: 'Grand Plaza (Pancaked 5 Slabs)', x: 30, z: -22, w: 22, d: 20, color: '#ef4444' },
+      { name: 'Sheared Townhouse (Void)', x: -46, z: -12, w: 14, d: 12, color: '#ef4444' },
+      { name: 'Apex Bank (Soft-Storey)', x: 25, z: 10, w: 18, d: 15, color: '#f59e0b' },
+      { name: 'Leveled Warehouse Ruin', x: 44, z: -42, w: 20, d: 16, color: '#ef4444' }
+    ];
+
+    bldgOutlines.forEach(b => {
+      const p = this.worldToScreen(b.x - b.w / 2, b.z - b.d / 2);
+      const bw = b.w * this.scale;
+      const bd = b.d * this.scale;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+      ctx.fillRect(p.x, p.y, bw, bd);
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(p.x, p.y, bw, bd);
+    });
+
+    // 4. Primary Fault Rupture Chasm & Displacement Scarp (Z: -14 to -10)
+    const fLeft = this.worldToScreen(-24, -13);
+    const fRight = this.worldToScreen(24, -13);
+    ctx.strokeStyle = '#ef4444';
+    ctx.setLineDash([4, 2]);
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(fLeft.x, fLeft.y);
+    ctx.lineTo(fRight.x, fRight.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Fracture warning text
+    ctx.fillStyle = '#ef4444';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('⚠️ SEISMIC FAULT CHASM (0.9m SCARP)', fLeft.x - 8, fLeft.y - 4);
+
+    // 5. NDRF SAR Staging Post (Z: 56)
+    const sp = this.worldToScreen(0, 56);
+    ctx.fillStyle = '#10b981';
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('🚑 NDRF COMMAND STAGING', sp.x + 8, sp.y + 3);
+
+    // Urban Sector Tag
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('🏚️ URBAN COLLAPSE ZONE ALPHA-4', 12, 20);
+  }
+
+  drawIndustrialOverlay(ctx, w, h) {
+    // 1. Main Production Complex Building Outline
+    const pTopLeft = this.worldToScreen(-22, -42);
+    const pBotRight = this.worldToScreen(22, -10);
+    const pw = pBotRight.x - pTopLeft.x;
+    const ph = pBotRight.y - pTopLeft.y;
+
+    ctx.fillStyle = 'rgba(30, 58, 138, 0.22)';
+    ctx.fillRect(pTopLeft.x, pTopLeft.y, pw, ph);
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(pTopLeft.x, pTopLeft.y, pw, ph);
+
+    ctx.fillStyle = '#93c5fd';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('🏭 PRODUCTION HALL (BREACHED)', pTopLeft.x + 6, pTopLeft.y + 14);
+
+    // 2. Chemical Storage Tank Farm Perimeter
+    const tTopLeft = this.worldToScreen(-52, -8);
+    const tBotRight = this.worldToScreen(-18, 40);
+    const tw = tBotRight.x - tTopLeft.x;
+    const th = tBotRight.y - tTopLeft.y;
+
+    ctx.fillStyle = 'rgba(234, 88, 12, 0.12)';
+    ctx.fillRect(tTopLeft.x, tTopLeft.y, tw, th);
+
+    ctx.strokeStyle = 'rgba(234, 88, 12, 0.6)';
+    ctx.setLineDash([2, 2]);
+    ctx.strokeRect(tTopLeft.x, tTopLeft.y, tw, th);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#fb923c';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('🛢️ TANK FARM (CONTAINMENT BUND)', tTopLeft.x + 6, tTopLeft.y + 14);
+
+    // 3. Loading Bay Dock
+    const lTopLeft = this.worldToScreen(20, -4);
+    const lBotRight = this.worldToScreen(46, 30);
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.5)';
+    ctx.strokeRect(lTopLeft.x, lTopLeft.y, lBotRight.x - lTopLeft.x, lBotRight.y - lTopLeft.y);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('🚚 CHEMICAL LOADING DOCK', lTopLeft.x + 4, lTopLeft.y + 12);
+
+    // Industrial Sector Tag
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.fillText('☣️ INDUSTRIAL CORRIDOR CHARLIE-1', 12, 20);
+  }
+
   drawSafeExtractionRoute() {
     if (!this.environment.survivors || this.environment.survivors.length === 0) return;
 
@@ -287,11 +416,24 @@ class TacticalGisMap {
     const start = this.worldToScreen(startPos.x, startPos.z);
     ctx.moveTo(start.x, start.y);
 
-    // Dynamic corridor through detected/active survivors
-    this.environment.survivors.forEach(s => {
-      const pt = this.worldToScreen(s.position.x, s.position.z);
+    // Nearest-neighbor route planning for clean tactical corridor
+    const remaining = [...this.environment.survivors];
+    let curr = startPos;
+    while (remaining.length > 0) {
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const d = Math.hypot(remaining[i].position.x - curr.x, remaining[i].position.z - curr.z);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      const nextSurv = remaining.splice(bestIdx, 1)[0];
+      const pt = this.worldToScreen(nextSurv.position.x, nextSurv.position.z);
       ctx.lineTo(pt.x, pt.y);
-    });
+      curr = nextSurv.position;
+    }
 
     ctx.stroke();
     ctx.setLineDash([]);

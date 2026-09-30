@@ -232,15 +232,21 @@ class DroneModel {
     if (this.telemetry.isFlying) {
       const posError = new THREE.Vector3().subVectors(this.targetPosition, this.group.position);
       
-      // Calculate speeds
-      const moveSpeed = 7.5; // m/s
-      const climbSpeed = 4.0; // m/s
+      // Realistic multirotor SAR cruise speed limits
+      const maxHorizontalSpeed = 8.5; // m/s (approx 30.6 km/h)
+      const maxClimbSpeed = 3.5; // m/s
       
-      // Interpolate position
+      const horizDist = Math.hypot(posError.x, posError.z);
+      const horizMove = Math.min(horizDist, maxHorizontalSpeed * delta);
+      const horizRatio = horizDist > 0.001 ? horizMove / horizDist : 0;
+
+      const vertDist = Math.abs(posError.y);
+      const vertMove = Math.sign(posError.y) * Math.min(vertDist, maxClimbSpeed * delta);
+
       const step = new THREE.Vector3(
-        posError.x * Math.min(1, moveSpeed * delta),
-        posError.y * Math.min(1, climbSpeed * delta),
-        posError.z * Math.min(1, moveSpeed * delta)
+        posError.x * horizRatio,
+        vertMove,
+        posError.z * horizRatio
       );
 
       this.group.position.add(step);
@@ -258,8 +264,8 @@ class DroneModel {
       this.group.rotation.y += (this.targetRotation.y - this.group.rotation.y) * 0.08;
 
       // Update telemetry
-      this.telemetry.groundSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-      this.telemetry.verticalSpeed = this.velocity.y;
+      this.telemetry.groundSpeed = Math.min(maxHorizontalSpeed, Math.hypot(this.velocity.x, this.velocity.z));
+      this.telemetry.verticalSpeed = Math.min(maxClimbSpeed, Math.max(-maxClimbSpeed, this.velocity.y));
       this.telemetry.pitch = THREE.MathUtils.radToDeg(this.group.rotation.x);
       this.telemetry.roll = THREE.MathUtils.radToDeg(this.group.rotation.z);
       this.telemetry.yaw = THREE.MathUtils.radToDeg(this.group.rotation.y);

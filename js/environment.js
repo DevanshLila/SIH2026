@@ -21,6 +21,7 @@ class DisasterEnvironment {
     this.gasPlumeEmitter = null;
     this.obstacleColliders = []; // Real meshes used for LiDAR geometric raycasting
     this.emergencyLights = []; // Flashing emergency vehicle / scene lights
+    this.structuralHazards = []; // Structural AI detection markers for Earthquake simulation
     this.waterMesh = null;
     this.waterGeo = null;
     this.waterInitialZ = null;
@@ -54,6 +55,7 @@ class DisasterEnvironment {
     this.gasPlumeEmitter = null;
     this.obstacleColliders = [];
     this.emergencyLights = [];
+    this.structuralHazards = [];
     this.waterMesh = null;
     this.waterGeo = null;
     this.waterInitialZ = null;
@@ -220,12 +222,41 @@ class DisasterEnvironment {
       ground.position.y = -0.5;
       ground.receiveShadow = true;
       this.environmentGroup.add(ground);
-    } else {
-      // Concrete / Damaged Asphalt Ground
-      const groundGeo = new THREE.PlaneGeometry(180, 180, 48, 48);
+    } else if (type === 'earthquake') {
+      // 1. Weathered Asphalt Base Terrain
+      const groundGeo = new THREE.PlaneGeometry(180, 180, 32, 32);
       const groundMat = new THREE.MeshStandardMaterial({
-        color: 0x1a2130,
-        roughness: 0.88,
+        color: 0x181e28, // Dark weathered asphalt
+        roughness: 0.94,
+        metalness: 0.08
+      });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      this.environmentGroup.add(ground);
+      this.obstacleColliders.push(ground);
+
+      // Earthen soil & debris sediment patches beneath building collapse zones
+      const soilMat = new THREE.MeshStandardMaterial({ color: 0x4a3f31, roughness: 0.95 });
+      const soilPatches = [
+        { x: -32, z: -20, w: 42, d: 46 },
+        { x: 32, z: -20, w: 42, d: 46 },
+        { x: -34, z: 22, w: 38, d: 36 },
+        { x: 32, z: 24, w: 42, d: 40 }
+      ];
+      soilPatches.forEach(sp => {
+        const patch = new THREE.Mesh(new THREE.PlaneGeometry(sp.w, sp.d), soilMat);
+        patch.rotation.x = -Math.PI / 2;
+        patch.position.set(sp.x, 0.02, sp.z);
+        patch.receiveShadow = true;
+        this.environmentGroup.add(patch);
+      });
+    } else {
+      // 1. Industrial Factory Yard Ground
+      const groundGeo = new THREE.PlaneGeometry(180, 180, 32, 32);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x181f2a, // Industrial tarmac perimeter
+        roughness: 0.90,
         metalness: 0.12
       });
       const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -234,227 +265,1634 @@ class DisasterEnvironment {
       this.environmentGroup.add(ground);
       this.obstacleColliders.push(ground);
 
+      // Heavy Reinforced Concrete Slab Foundation Yard (Main Plant & Tank Farm Area)
+      const yardMat = new THREE.MeshStandardMaterial({
+        color: 0x2e3846, // Industrial concrete slab
+        roughness: 0.85,
+        metalness: 0.18
+      });
+      const yardSlab = new THREE.Mesh(new THREE.BoxGeometry(84, 0.25, 96), yardMat);
+      yardSlab.position.set(-6, 0.12, -4);
+      yardSlab.receiveShadow = true;
+      this.environmentGroup.add(yardSlab);
+      this.obstacleColliders.push(yardSlab);
+
       // Tactical Coordinate Grid
       const grid = new THREE.GridHelper(180, 36, 0x0284c7, 0x1e293b);
-      grid.position.y = 0.05;
+      grid.position.y = 0.26;
       this.environmentGroup.add(grid);
     }
   }
 
-  // =========================================================================
-  // SCENARIO 1: REALISTIC URBAN EARTHQUAKE DISASTER ENVIRONMENT
+    // =========================================================================
+  // SCENARIO 1: REALISTIC URBAN EARTHQUAKE DISASTER ENVIRONMENT (SERIOUS-GAME / SIMULATOR)
+  // 50-70%+ Built Environment Destroyed: Pancaked Slabs, Leaning Towers, Sheared Walls,
+  // Massive Fault Rupture Chasm, Rubble Fields, Active NDRF Responders & Tactical Overlays
   // =========================================================================
   buildEarthquakeScenario() {
-    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 });
-    const darkConcrete = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
-    const rebarMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85 });
-    const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, roughness: 0.95 });
-    const yellowStripe = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.6 });
+    // -------------------------------------------------------------------------
+    // 1. PALETTES & REALISTIC URBAN COLLAPSE MATERIALS
+    // Desaturated cool palette: pale concrete whites, light greys, muted beige/brown rubble,
+    // dusty tan earth, dark charcoal asphalt. Orange/yellow/red used exclusively as emergency/hazard accents.
+    // -------------------------------------------------------------------------
+    const matPaleConcrete   = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.80 });
+    const matLightConcrete  = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.82 });
+    const matMidConcrete    = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.85 });
+    const matDarkConcrete   = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.88 });
+    const matSlabConcrete   = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.90 });
 
-    // 1. Damaged Asphalt Main Boulevard with deep seismic fissures & elevation drops
-    const roadGroup = new THREE.Group();
-    const roadBed = new THREE.Mesh(new THREE.BoxGeometry(22, 0.3, 160), asphaltMat);
-    roadBed.position.set(0, 0.15, 0);
-    roadBed.receiveShadow = true;
-    roadGroup.add(roadBed);
-    this.obstacleColliders.push(roadBed);
+    // Rubble & Earth Materials
+    const matRubbleBeige    = new THREE.MeshStandardMaterial({ color: 0xd6cbbe, roughness: 0.92 });
+    const matRubbleTan      = new THREE.MeshStandardMaterial({ color: 0xc4b5a0, roughness: 0.94 });
+    const matRubbleBrown    = new THREE.MeshStandardMaterial({ color: 0xb8a99a, roughness: 0.92 });
+    const matDustyEarth     = new THREE.MeshStandardMaterial({ color: 0xc7b597, roughness: 0.96 });
+    const matSubterranean   = new THREE.MeshStandardMaterial({ color: 0x271e16, roughness: 0.98 });
 
-    // Broken asphalt slabs creating road gaps & fault lines
-    const fissurePositions = [-35, -12, 18, 42];
-    fissurePositions.forEach((z, idx) => {
-      const crack = new THREE.Mesh(new THREE.BoxGeometry(24, 0.7, 3.5), new THREE.MeshStandardMaterial({ color: 0x0b0f19 }));
-      crack.position.set(0, 0.1, z);
-      roadGroup.add(crack);
+    // Asphalt & Roadways
+    const matAsphalt        = new THREE.MeshStandardMaterial({ color: 0x1a2130, roughness: 0.95 });
+    const matCrackedAsphalt = new THREE.MeshStandardMaterial({ color: 0x111622, roughness: 0.98 });
+    const matYellowStripe   = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.60 });
+    const matWhiteStripe    = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.60 });
 
-      // Buckled pavement slabs
-      const buckled = new THREE.Mesh(new THREE.BoxGeometry(10, 0.4, 4), asphaltMat);
-      buckled.position.set(idx % 2 === 0 ? 5 : -5, 0.5, z + 2);
-      buckled.rotation.set(0.18 * (idx % 2 === 0 ? 1 : -1), 0.1, 0.15);
-      roadGroup.add(buckled);
-      this.obstacleColliders.push(buckled);
+    // Structural, Masonry & Debris Materials
+    const matRebar          = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.85, roughness: 0.35 });
+    const matSteelBeam      = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.88, roughness: 0.30 });
+    const matBrickRed       = new THREE.MeshStandardMaterial({ color: 0x7a6352, roughness: 0.90 }); // Muted weathered masonry/brick
+    const matBrickBrown     = new THREE.MeshStandardMaterial({ color: 0x634832, roughness: 0.92 });
+    const matBrickOchre     = new THREE.MeshStandardMaterial({ color: 0x8a705b, roughness: 0.90 });
+    const matWoodTimber     = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.92 });
+    const matWoodBroken     = new THREE.MeshStandardMaterial({ color: 0x78533b, roughness: 0.90 });
+
+    // Architecture & Glass
+    const matGlassDark      = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.15, metalness: 0.85 });
+    const matRoofTerra      = new THREE.MeshStandardMaterial({ color: 0x8a4b38, roughness: 0.85 });
+    const matRoofSlate      = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.75 });
+    const matRoofTinGalv    = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.72, roughness: 0.35 });
+    const matWallCream      = new THREE.MeshStandardMaterial({ color: 0xf1ede4, roughness: 0.80 });
+    const matWallSkyBlue    = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.82 }); // Pale grey concrete (NOT bright blue!)
+    const matWallPastelGreen= new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.80 }); // Pale concrete white (NOT pastel green!)
+    const matWallBeige      = new THREE.MeshStandardMaterial({ color: 0xe2d9cc, roughness: 0.80 });
+
+    // Emergency & Response Materials (Accents ONLY)
+    const matHazardOrange   = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.50 });
+    const matHazardYellow   = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.50 });
+    const matHazardRed      = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.50 });
+    const matNdrfNavy       = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.60 });
+    const matNdrfWhite      = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.50 });
+
+    // Vehicle Materials (Muted disaster-debris tones)
+    const matCarRed         = new THREE.MeshStandardMaterial({ color: 0x5a2d2d, roughness: 0.60 }); // Weathered dusty maroon
+    const matCarYellow      = new THREE.MeshStandardMaterial({ color: 0x8f773d, roughness: 0.60 }); // Dusty weathered ochre taxi
+    const matCarWhite       = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.60 }); // Dusty white
+    const matCarTire        = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.90 });
+
+    // Environmental details
+    const matPuddleWater    = new THREE.MeshStandardMaterial({
+      color: 0x1e40af,
+      roughness: 0.1,
+      metalness: 0.4,
+      transparent: true,
+      opacity: 0.8
     });
+    const matTrunkBrown     = new THREE.MeshStandardMaterial({ color: 0x45271a, roughness: 0.9 });
+    const matLeafGreen      = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7 });
+
+    // -------------------------------------------------------------------------
+    // 2. BACKGROUND DEPTH: DISTANT MOUNTAINS & DAMAGED URBAN SKYLINE
+    // Creates wide scale and realism for elevated isometric/third-person survey camera
+    // -------------------------------------------------------------------------
+    const bgGroup = new THREE.Group();
+
+    // A. Layered Perimeter Mountain Ridges (Radius 180m - 260m)
+    const mountainColors = [0x5e7c99, 0x6d8ba8, 0x7b98b5, 0x8eaac9, 0xa1bddc];
+    const mountainConfigs = [
+      // North Mountain Range
+      { x: -140, z: -210, w: 90, h: 54, d: 70, cIdx: 0, rotY: 0.2 },
+      { x: -60,  z: -230, w: 110, h: 62, d: 80, cIdx: 1, rotY: -0.1 },
+      { x: 30,   z: -220, w: 95,  h: 58, d: 75, cIdx: 2, rotY: 0.3 },
+      { x: 120,  z: -210, w: 85,  h: 48, d: 65, cIdx: 1, rotY: -0.2 },
+      // East Mountain Range
+      { x: 210,  z: -120, w: 80,  h: 50, d: 90, cIdx: 3, rotY: 0.1 },
+      { x: 230,  z: -20,  w: 90,  h: 56, d: 95, cIdx: 2, rotY: -0.15 },
+      { x: 215,  z: 80,   w: 85,  h: 46, d: 85, cIdx: 4, rotY: 0.25 },
+      // South Mountain Range
+      { x: 130,  z: 215,  w: 90,  h: 45, d: 70, cIdx: 1, rotY: 0.1 },
+      { x: 40,   z: 230,  w: 105, h: 52, d: 80, cIdx: 0, rotY: -0.3 },
+      { x: -50,  z: 220,  w: 95,  h: 48, d: 75, cIdx: 2, rotY: 0.15 },
+      { x: -130, z: 210,  w: 85,  h: 42, d: 70, cIdx: 3, rotY: -0.2 },
+      // West Mountain Range
+      { x: -210, z: 120,  w: 85,  h: 48, d: 80, cIdx: 2, rotY: 0.1 },
+      { x: -230, z: 10,   w: 95,  h: 58, d: 90, cIdx: 1, rotY: -0.1 },
+      { x: -210, z: -100, w: 85,  h: 52, d: 85, cIdx: 3, rotY: 0.2 }
+    ];
+
+    mountainConfigs.forEach(mc => {
+      const matMtn = new THREE.MeshStandardMaterial({
+        color: mountainColors[mc.cIdx],
+        roughness: 0.96,
+        flatShading: true
+      });
+      // Realistic low-poly multi-ridge mountain formation with wide base
+      const mtnGeo = new THREE.CylinderGeometry(mc.w * 0.12, mc.w * 0.56, mc.h, 5, 1);
+      const mtnMesh = new THREE.Mesh(mtnGeo, matMtn);
+      mtnMesh.position.set(mc.x, mc.h / 2 - 2, mc.z);
+      mtnMesh.rotation.y = mc.rotY;
+      mtnMesh.scale.set(1.4, 1.0, (mc.d / mc.w) * 0.8);
+      bgGroup.add(mtnMesh);
+    });
+
+    // B. Distant Damaged Urban Skyline Silhouettes (Radius 95m - 145m)
+    const skylineConfigs = [
+      // North skyline silhouettes
+      { x: -95, z: -125, w: 18, h: 36, d: 16, tilt: 0.08 },
+      { x: -55, z: -135, w: 22, h: 44, d: 18, tilt: -0.06 },
+      { x: 10,  z: -130, w: 20, h: 32, d: 16, tilt: 0.05 },
+      { x: 75,  z: -125, w: 24, h: 38, d: 20, tilt: -0.09 },
+      // East skyline silhouettes
+      { x: 125, z: -70,  w: 18, h: 34, d: 16, tilt: 0.07 },
+      { x: 135, z: 20,   w: 20, h: 40, d: 18, tilt: -0.05 },
+      { x: 125, z: 95,   w: 22, h: 30, d: 16, tilt: 0.06 },
+      // South skyline silhouettes
+      { x: 80,  z: 125,  w: 18, h: 32, d: 16, tilt: -0.08 },
+      { x: -20, z: 130,  w: 24, h: 36, d: 20, tilt: 0.07 },
+      { x: -90, z: 125,  w: 20, h: 28, d: 18, tilt: -0.05 },
+      // West skyline silhouettes
+      { x: -125, z: 65,  w: 18, h: 35, d: 16, tilt: 0.08 },
+      { x: -130, z: -45, w: 22, h: 42, d: 20, tilt: -0.06 }
+    ];
+
+    skylineConfigs.forEach(sc => {
+      const matSkyline = new THREE.MeshStandardMaterial({
+        color: 0x64748b,
+        roughness: 0.9,
+        flatShading: true
+      });
+      const bMesh = new THREE.Mesh(new THREE.BoxGeometry(sc.w, sc.h, sc.d), matSkyline);
+      bMesh.position.set(sc.x, sc.h / 2, sc.z);
+      bMesh.rotation.z = sc.tilt;
+      bgGroup.add(bMesh);
+
+      // Jagged damaged roof silhouette on top
+      const topCap = new THREE.Mesh(new THREE.ConeGeometry(sc.w * 0.45, sc.h * 0.18, 4), matSkyline);
+      topCap.position.set(sc.x, sc.h + (sc.h * 0.09), sc.z);
+      topCap.rotation.y = Math.PI / 4;
+      bgGroup.add(topCap);
+    });
+
+    // Distant Tilted Crane Silhouette on damaged building roof
+    const cranePole = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 18, 6), matSteelBeam);
+    cranePole.position.set(-55, 48, -135);
+    cranePole.rotation.z = 0.28;
+    bgGroup.add(cranePole);
+    const craneJib = new THREE.Mesh(new THREE.BoxGeometry(22, 0.4, 0.4), matSteelBeam);
+    craneJib.position.set(-48, 54, -135);
+    craneJib.rotation.z = -0.15;
+    bgGroup.add(craneJib);
+
+    this.environmentGroup.add(bgGroup);
+
+    // -------------------------------------------------------------------------
+    // 3. DAMAGED ROAD NETWORK WITH MASSIVE SEISMIC FAULT CHASM & DISPLACEMENT SCARP
+    // -------------------------------------------------------------------------
+    const roadGroup = new THREE.Group();
+
+    // A. Main North-South Boulevard (22m wide x 160m long)
+    // South boulevard section (intact elevation y: 0.18)
+    const blvdSouth = new THREE.Mesh(new THREE.BoxGeometry(22, 0.36, 75), matAsphalt);
+    blvdSouth.position.set(0, 0.18, 40);
+    blvdSouth.receiveShadow = true;
+    roadGroup.add(blvdSouth);
+    this.obstacleColliders.push(blvdSouth);
+
+    // North boulevard section (SUNKEN FAULT DISPLACEMENT: dropped down by 0.9m relative to south!)
+    const blvdNorth = new THREE.Mesh(new THREE.BoxGeometry(22, 0.36, 68), matAsphalt);
+    blvdNorth.position.set(0, -0.72, -48);
+    blvdNorth.receiveShadow = true;
+    roadGroup.add(blvdNorth);
+    this.obstacleColliders.push(blvdNorth);
+
+    // Double Yellow Centerline South
+    [-0.3, 0.3].forEach(offset => {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 73), matYellowStripe);
+      line.position.set(offset, 0.37, 40);
+      roadGroup.add(line);
+    });
+
+    // Double Yellow Centerline North (Sunken with lateral shear offset)
+    [-0.3, 0.3].forEach(offset => {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 66), matYellowStripe);
+      line.position.set(offset + 0.65, -0.53, -48); // Sheared laterally by 0.65m!
+      roadGroup.add(line);
+    });
+
+    // Concrete Sidewalks and Curbs along Boulevard
+    [-12.5, 12.5].forEach(x => {
+      // South sidewalk
+      const swSouth = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.45, 75), matLightConcrete);
+      swSouth.position.set(x, 0.23, 40);
+      swSouth.receiveShadow = true;
+      roadGroup.add(swSouth);
+      this.obstacleColliders.push(swSouth);
+
+      // North sidewalk (sunken)
+      const swNorth = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.45, 68), matLightConcrete);
+      swNorth.position.set(x + (x > 0 ? 0.3 : -0.3), -0.67, -48);
+      swNorth.receiveShadow = true;
+      roadGroup.add(swNorth);
+      this.obstacleColliders.push(swNorth);
+    });
+
+    // B. East-West Cross Avenue (16m wide x 150m long at Z: 18)
+    const crossBed = new THREE.Mesh(new THREE.BoxGeometry(150, 0.34, 16), matAsphalt);
+    crossBed.position.set(0, 0.18, 18);
+    crossBed.receiveShadow = true;
+    roadGroup.add(crossBed);
+    this.obstacleColliders.push(crossBed);
+
+    const crossLine = new THREE.Mesh(new THREE.BoxGeometry(148, 0.05, 0.3), matYellowStripe);
+    crossLine.position.set(0, 0.36, 18);
+    roadGroup.add(crossLine);
+
+    [9.2, 26.8].forEach(z => {
+      const sidewalk = new THREE.Mesh(new THREE.BoxGeometry(150, 0.44, 2.4), matLightConcrete);
+      sidewalk.position.set(0, 0.23, z);
+      sidewalk.receiveShadow = true;
+      roadGroup.add(sidewalk);
+      this.obstacleColliders.push(sidewalk);
+    });
+
+    // C. MASSIVE PRIMARY GROUND FISSURE & SEISMIC FAULT CHASM (Z: -14 to -10)
+    // Clear prominent ground fissure spanning the entire roadway in foreground/midground
+    const chasmGroup = new THREE.Group();
+    chasmGroup.position.set(0, 0, -12);
+
+    // Deep subterranean chasm pit (28m wide x 5m broad x 2.2m deep)
+    const chasmCavity = new THREE.Mesh(new THREE.BoxGeometry(28, 2.4, 5.2), matSubterranean);
+    chasmCavity.position.set(0, -1.0, 0);
+    chasmCavity.receiveShadow = true;
+    chasmGroup.add(chasmCavity);
+    this.obstacleColliders.push(chasmCavity);
+
+    // Jagged exposed bedrock & subterranean strata blocks inside chasm
+    const strataBlocks = [
+      { x: -10, y: -0.6, z: -1.2, w: 4.5, h: 1.4, d: 2.2, rot: 0.15 },
+      { x: -4,  y: -0.8, z: 1.0,  w: 5.2, h: 1.2, d: 2.5, rot: -0.22 },
+      { x: 3,   y: -0.7, z: -0.8, w: 4.8, h: 1.5, d: 2.0, rot: 0.18 },
+      { x: 9.5, y: -0.9, z: 0.6,  w: 5.0, h: 1.3, d: 2.4, rot: -0.12 }
+    ];
+    strataBlocks.forEach(sb => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(sb.w, sb.h, sb.d), matSubterranean);
+      b.position.set(sb.x, sb.y, sb.z);
+      b.rotation.y = sb.rot;
+      chasmGroup.add(b);
+      this.obstacleColliders.push(b);
+    });
+
+    // Exposed fractured concrete stormwater drainage culverts inside fault chasm
+    [-6.5, 5.0].forEach(cx => {
+      const pipeOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 4.2, 12, 1, true), matDarkConcrete);
+      pipeOuter.position.set(cx, -0.65, 0);
+      pipeOuter.rotation.x = Math.PI / 2;
+      chasmGroup.add(pipeOuter);
+
+      const pipeInner = new THREE.Mesh(new THREE.CylinderGeometry(0.60, 0.60, 4.22, 12, 1, true), matSubterranean);
+      pipeInner.position.set(cx, -0.65, 0);
+      pipeInner.rotation.x = Math.PI / 2;
+      chasmGroup.add(pipeInner);
+    });
+
+    // Dangling severed underground electrical conduit cables across chasm
+    for (let c = 0; c < 4; c++) {
+      const cableCurve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(-10 + c * 6, 0.15, -2.4),
+        new THREE.Vector3(-10 + c * 6 + 1.2, -1.2, 0),
+        new THREE.Vector3(-10 + c * 6 + 0.8, -0.7, 2.5)
+      );
+      const cableGeo = new THREE.TubeGeometry(cableCurve, 12, 0.035, 6, false);
+      const cableMesh = new THREE.Mesh(cableGeo, matRebar);
+      chasmGroup.add(cableMesh);
+    }
+
+    // 4 Massive Buckled Asphalt Slabs Tilted into Fissure (Sharp 18-24° Angles)
+    // Slab 1: West buckled slab tilting into trench
+    const buckledSlab1 = new THREE.Mesh(new THREE.BoxGeometry(11, 0.45, 5.2), matAsphalt);
+    buckledSlab1.position.set(-5.5, 0.65, 1.8);
+    buckledSlab1.rotation.set(0.24, 0.08, -0.16);
+    chasmGroup.add(buckledSlab1);
+    this.obstacleColliders.push(buckledSlab1);
+
+    // Sheared Yellow Stripe on Slab 1
+    const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 5.0), matYellowStripe);
+    stripe1.position.set(-0.3, 0.24, 0);
+    buckledSlab1.add(stripe1);
+
+    // Slab 2: East buckled slab tilting into trench from North side
+    const buckledSlab2 = new THREE.Mesh(new THREE.BoxGeometry(10.5, 0.45, 5.0), matAsphalt);
+    buckledSlab2.position.set(5.5, 0.55, -2.2);
+    buckledSlab2.rotation.set(-0.26, -0.06, 0.19);
+    chasmGroup.add(buckledSlab2);
+    this.obstacleColliders.push(buckledSlab2);
+
+    // Slab 3: Far West sidewalk slab broken and raised
+    const buckledSlab3 = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.48, 4.8), matLightConcrete);
+    buckledSlab3.position.set(-12.5, 0.72, 0.8);
+    buckledSlab3.rotation.set(0.18, 0.15, -0.25);
+    chasmGroup.add(buckledSlab3);
+    this.obstacleColliders.push(buckledSlab3);
+
+    // Slab 4: Far East sidewalk slab dropped and tilted
+    const buckledSlab4 = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.48, 4.8), matLightConcrete);
+    buckledSlab4.position.set(12.5, 0.45, -1.0);
+    buckledSlab4.rotation.set(-0.22, 0.10, 0.18);
+    chasmGroup.add(buckledSlab4);
+    this.obstacleColliders.push(buckledSlab4);
+
+    roadGroup.add(chasmGroup);
+
+    // D. Crossroads Buckled Intersection (Z: 18, X: 0) - Compressed Anticlinal Ridge
+    const crossroadBuckle = new THREE.Mesh(new THREE.BoxGeometry(9.0, 0.45, 9.0), matCrackedAsphalt);
+    crossroadBuckle.position.set(1.5, 0.55, 19);
+    crossroadBuckle.rotation.set(0.18, 0.42, -0.14);
+    roadGroup.add(crossroadBuckle);
+    this.obstacleColliders.push(crossroadBuckle);
+
+    // E. North & South Transverse Road Fractures
+    // Fissure at Z: -42 (North)
+    const chasmNorth = new THREE.Mesh(new THREE.BoxGeometry(24, 0.9, 3.8), matSubterranean);
+    chasmNorth.position.set(0, -0.65, -42);
+    roadGroup.add(chasmNorth);
+
+    const buckledNorthSlab = new THREE.Mesh(new THREE.BoxGeometry(12, 0.42, 4.5), matAsphalt);
+    buckledNorthSlab.position.set(-4, -0.35, -41);
+    buckledNorthSlab.rotation.set(0.20, 0.10, 0.12);
+    roadGroup.add(buckledNorthSlab);
+    this.obstacleColliders.push(buckledNorthSlab);
+
+    // Fissure at Z: 46 (South)
+    const chasmSouth = new THREE.Mesh(new THREE.BoxGeometry(24, 0.8, 3.5), matSubterranean);
+    chasmSouth.position.set(0, 0.05, 46);
+    roadGroup.add(chasmSouth);
+
+    // F. Branching Surface Fracture Decal Lines on Asphalt
+    const crackDecals = [
+      { x: -3.5, z: -25, len: 16, rot: 0.38, w: 0.35 },
+      { x: 4.5,  z: -4,  len: 18, rot: -0.45, w: 0.40 },
+      { x: -6.0, z: 28,  len: 14, rot: 0.28, w: 0.32 },
+      { x: 5.0,  z: 36,  len: 12, rot: -0.32, w: 0.30 },
+      { x: 24.0, z: 17,  len: 20, rot: 0.15, w: 0.36 },
+      { x: -26.0,z: 19,  len: 18, rot: -0.22, w: 0.34 },
+      { x: 45.0, z: 18,  len: 16, rot: 0.25, w: 0.32 },
+      { x: -48.0,z: 18,  len: 15, rot: -0.18, w: 0.30 },
+      { x: -2.0, z: -60, len: 14, rot: 0.15, w: 0.35 },
+      { x: 3.0,  z: 58,  len: 16, rot: -0.20, w: 0.32 }
+    ];
+    crackDecals.forEach(cd => {
+      const cl = new THREE.Mesh(new THREE.BoxGeometry(cd.w, 0.05, cd.len), matCrackedAsphalt);
+      cl.position.set(cd.x, 0.38, cd.z);
+      cl.rotation.y = cd.rot;
+      roadGroup.add(cl);
+    });
+
+    // G. Sheared Underground Water Main & Reflective Blue Puddle at (-6, 0.18, 16)
+    const waterPuddle = new THREE.Mesh(new THREE.PlaneGeometry(7.0, 5.5), matPuddleWater);
+    waterPuddle.rotation.x = -Math.PI / 2;
+    waterPuddle.position.set(-6, 0.38, 16);
+    roadGroup.add(waterPuddle);
+
+    const severedPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 1.8, 12), new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.7 }));
+    severedPipe.rotation.z = Math.PI / 3;
+    severedPipe.position.set(-7.5, 0.62, 15.5);
+    roadGroup.add(severedPipe);
+
     this.environmentGroup.add(roadGroup);
 
-    // 2. Standing But Visibly Heavily Damaged Tower (Leaning Collapse)
-    const towerGroup = new THREE.Group();
-    towerGroup.position.set(-28, 0, -25);
-    const towerCore = new THREE.Mesh(new THREE.BoxGeometry(20, 26, 18), concreteMat);
-    towerCore.position.y = 13;
-    towerCore.castShadow = true;
-    towerGroup.add(towerCore);
-    this.obstacleColliders.push(towerCore);
+    // -------------------------------------------------------------------------
+    // 4. DENSE URBAN BUILDINGS (14+ DISTINCT STRUCTURES WITH 50-70%+ DESTRUCTION)
+    // -------------------------------------------------------------------------
 
-    // Sheared floors & exposed internal rebars
-    for (let f = 1; f <= 3; f++) {
-      const slabFloor = new THREE.Mesh(new THREE.BoxGeometry(22, 0.8, 20), darkConcrete);
-      slabFloor.position.set(0, f * 7, 0);
-      slabFloor.rotation.z = 0.08 * f;
-      towerGroup.add(slabFloor);
-      this.obstacleColliders.push(slabFloor);
-    }
-    // Leaning tilt
-    towerGroup.rotation.z = 0.07;
-    towerGroup.rotation.x = -0.05;
-    this.environmentGroup.add(towerGroup);
+    // =========================================================================
+    // BUILDING 1: "Metropolis Towers" - Leaning & Sheared 6-Storey Apartment Tower
+    // Landmark leaning collapse at (-28, 0, -28), visibly tilted ~8 degrees
+    // =========================================================================
+    const bldg1Group = new THREE.Group();
+    bldg1Group.position.set(-28, 0, -28);
 
-    // 3. Pancaked Residential Building (Entire Roof & Top Floors Collapsed)
-    const pancakeGroup = new THREE.Group();
-    pancakeGroup.position.set(30, 0, -18);
-    for (let i = 0; i < 4; i++) {
-      const slab = new THREE.Mesh(new THREE.BoxGeometry(18 + i * 1.5, 0.9, 16 + i * 1.2), concreteMat);
-      slab.position.set((Math.random() - 0.5) * 2, 1.2 + i * 1.6, (Math.random() - 0.5) * 2);
-      slab.rotation.set((Math.random() - 0.5) * 0.15, Math.random() * 0.2, (Math.random() - 0.5) * 0.18);
-      slab.castShadow = true;
-      pancakeGroup.add(slab);
+    const b1Core = new THREE.Mesh(new THREE.BoxGeometry(18, 28, 16), matPaleConcrete);
+    b1Core.position.y = 14;
+    b1Core.castShadow = true;
+    bldg1Group.add(b1Core);
+    this.obstacleColliders.push(b1Core);
+
+    // Reinforced concrete floor dividing slabs on 6 floors
+    for (let f = 1; f <= 5; f++) {
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(19.2, 0.7, 17.2), matSlabConcrete);
+      slab.position.y = f * 4.6;
+      bldg1Group.add(slab);
       this.obstacleColliders.push(slab);
     }
-    this.environmentGroup.add(pancakeGroup);
 
-    // 4. Large Rubble Field & Deep Concrete Voids
-    const rubbleCount = 45;
-    for (let i = 0; i < rubbleCount; i++) {
-      const rx = (Math.random() - 0.5) * 55;
-      const rz = (Math.random() - 0.5) * 55;
-      // Keep clear of main center road
-      if (Math.abs(rx) < 6 && Math.abs(rz) < 40) continue;
-
-      const w = 2.5 + Math.random() * 6.5;
-      const h = 0.8 + Math.random() * 3.2;
-      const d = 2.5 + Math.random() * 6.5;
-
-      const chunk = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), darkConcrete);
-      chunk.position.set(rx, h / 2, rz);
-      chunk.rotation.set(Math.random() * 0.45, Math.random() * Math.PI, Math.random() * 0.45);
-      chunk.castShadow = true;
-      this.environmentGroup.add(chunk);
-      this.obstacleColliders.push(chunk);
+    // Windows strips with shattered dark glass
+    for (let f = 0; f < 6; f++) {
+      for (let w = -6; w <= 6; w += 4) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 0.25), matGlassDark);
+        win.position.set(w, f * 4.6 + 2.4, 8.05);
+        bldg1Group.add(win);
+      }
     }
 
-    // 5. Exposed Twisted Steel Rebar Struts
-    for (let j = 0; j < 18; j++) {
-      const rebar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 4 + Math.random() * 5), rebarMat);
-      rebar.position.set((Math.random() - 0.5) * 45, 2, (Math.random() - 0.5) * 45);
-      rebar.rotation.set((Math.random() - 0.5) * 1.6, Math.random() * Math.PI, (Math.random() - 0.5) * 1.6);
-      this.environmentGroup.add(rebar);
+    // Diagonal Structural X-Shear Crack Lines down exterior facade
+    const b1Crack1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 18, 0.15), matCrackedAsphalt);
+    b1Crack1.position.set(-2, 14, 8.1);
+    b1Crack1.rotation.z = 0.55;
+    bldg1Group.add(b1Crack1);
+
+    const b1Crack2 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 18, 0.15), matCrackedAsphalt);
+    b1Crack2.position.set(2, 14, 8.1);
+    b1Crack2.rotation.z = -0.55;
+    bldg1Group.add(b1Crack2);
+
+    // Violent Corner Shear Rupture on 3rd & 4th floors (outer walls missing)
+    const b1ShearCavity = new THREE.Mesh(new THREE.BoxGeometry(7.0, 9.5, 7.0), matDarkConcrete);
+    b1ShearCavity.position.set(6.8, 16.5, 5.8);
+    bldg1Group.add(b1ShearCavity);
+
+    // Sheared Balcony on 3rd Floor (Sheltering waving Survivor SURV-EQ-02)
+    const b1Balcony = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.45, 2.8), matLightConcrete);
+    b1Balcony.position.set(4.5, 14.2, 8.4);
+    bldg1Group.add(b1Balcony);
+    this.obstacleColliders.push(b1Balcony);
+
+    const b1BalconyRail = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.9, 0.12), matDarkConcrete);
+    b1BalconyRail.position.set(4.5, 14.8, 9.7);
+    bldg1Group.add(b1BalconyRail);
+
+    // Exposed bent rebar rods extending from sheared balcony edge
+    for (let r = 0; r < 5; r++) {
+      const rebar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.6, 6), matRebar);
+      rebar.position.set(1.8 + r * 1.1, 14.2, 9.9);
+      rebar.rotation.x = 0.45 + (r % 2 === 0 ? 0.3 : -0.2);
+      bldg1Group.add(rebar);
     }
 
-    // 6. Fallen Concrete Utility Poles with Tangled Electrical Wires
-    [-18, 14].forEach(x => {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 11), concreteMat);
-      pole.position.set(x, 0.4, 8);
-      pole.rotation.z = Math.PI / 2 + 0.15;
-      pole.rotation.y = 0.4;
+    // Leaning Rooftop Elevator Penthouse & Tilted Water Tank
+    const b1Penthouse = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.8, 5.5), matLightConcrete);
+    b1Penthouse.position.set(-3, 29.8, -2);
+    bldg1Group.add(b1Penthouse);
+
+    // Water tank steel support legs connecting to roof (y: 28 to 29.2)
+    [[-0.8, -0.8], [-0.8, 0.8], [0.8, -0.8], [0.8, 0.8]].forEach(([lx, lz]) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.8, 6), matRebar);
+      leg.position.set(3.5 + lx, 28.9, 2 + lz);
+      bldg1Group.add(leg);
+    });
+
+    const b1WaterTank = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 2.4, 12), matRoofTinGalv);
+    b1WaterTank.position.set(3.5, 29.8, 2);
+    b1WaterTank.rotation.z = 0.28;
+    bldg1Group.add(b1WaterTank);
+
+    // Leaning structural tilt: 8 degrees on Z, -3 degrees on X
+    bldg1Group.rotation.z = 0.12;
+    bldg1Group.rotation.x = -0.05;
+    this.environmentGroup.add(bldg1Group);
+
+    // =========================================================================
+    // BUILDING 2: "Grand Plaza Commercial Mall" - Catastrophic 5-Tier Pancaked Collapse
+    // Complete progressive pancake collapse at (30, 0, -22)
+    // =========================================================================
+    const bldg2Group = new THREE.Group();
+    bldg2Group.position.set(30, 0, -22);
+
+    for (let i = 0; i < 5; i++) {
+      const slabW = 24 - i * 0.8;
+      const slabD = 20 - i * 0.7;
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(slabW, 0.85, slabD), matSlabConcrete);
+      slab.position.set((i % 2 === 0 ? 0.8 : -0.8), 1.0 + i * 1.35, (i % 2 === 0 ? -0.6 : 0.6));
+      slab.rotation.set(0.08 * (i % 2 === 0 ? 1 : -1), 0.05 * i, -0.09 * (i % 2 === 0 ? -1 : 1));
+      slab.castShadow = true;
+      bldg2Group.add(slab);
+      this.obstacleColliders.push(slab);
+
+      // Crushed concrete column stumps sandwiched between slabs creating survival cavities
+      [-8, 0, 8].forEach(px => {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.3, 1.3), matMidConcrete);
+        pillar.position.set(px + (i % 2 === 0 ? 0.5 : -0.5), i * 1.35 + 0.55, (i % 2 === 0 ? 4 : -4));
+        pillar.rotation.set(0.2, 0.15, 0.25);
+        bldg2Group.add(pillar);
+      });
+    }
+
+    // Protruding bent rebar cages around pancaked perimeter
+    for (let rb = 0; rb < 8; rb++) {
+      const rebar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.2, 6), matRebar);
+      rebar.position.set(-10 + rb * 2.8, 2.5 + (rb % 3) * 1.2, 9.8);
+      rebar.rotation.set(0.5, 0.3 * (rb % 2 === 0 ? 1 : -1), 0.4);
+      bldg2Group.add(rebar);
+    }
+
+    // Crushed Rooftop Chiller Units & Bent Metal Ducting
+    const acChiller = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.6, 2.8), matRoofTinGalv);
+    acChiller.position.set(2, 7.6, 1);
+    acChiller.rotation.set(0.25, 0.35, -0.30);
+    bldg2Group.add(acChiller);
+
+    const duct1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 6.0), matRoofTinGalv);
+    duct1.position.set(-3, 7.2, -2);
+    duct1.rotation.set(0.15, -0.4, 0.2);
+    bldg2Group.add(duct1);
+
+    this.environmentGroup.add(bldg2Group);
+
+    // =========================================================================
+    // BUILDING 3: 3-Storey Brick Townhouse - Sheared Facade & Exposed Interior Rooms
+    // Front wall completely sheared off onto street at (-46, 0, -12)
+    // =========================================================================
+    const bldg3Group = new THREE.Group();
+    bldg3Group.position.set(-46, 0, -12);
+
+    // Back & Side brick walls
+    const b3Back = new THREE.Mesh(new THREE.BoxGeometry(14, 11, 0.8), matBrickRed);
+    b3Back.position.set(0, 5.5, -6);
+    bldg3Group.add(b3Back);
+    this.obstacleColliders.push(b3Back);
+
+    const b3West = new THREE.Mesh(new THREE.BoxGeometry(0.8, 11, 12), matBrickRed);
+    b3West.position.set(-7, 5.5, 0);
+    bldg3Group.add(b3West);
+    this.obstacleColliders.push(b3West);
+
+    const b3East = new THREE.Mesh(new THREE.BoxGeometry(0.8, 11, 7), matBrickRed);
+    b3East.position.set(7, 5.5, -2.5);
+    bldg3Group.add(b3East);
+    this.obstacleColliders.push(b3East);
+
+    // Exposed Timber Floor Platforms on 2nd and 3rd Storeys
+    const b3Floor1 = new THREE.Mesh(new THREE.BoxGeometry(13.5, 0.35, 11), matWoodTimber);
+    b3Floor1.position.set(0, 3.8, 0);
+    bldg3Group.add(b3Floor1);
+    this.obstacleColliders.push(b3Floor1);
+
+    const b3Floor2 = new THREE.Mesh(new THREE.BoxGeometry(13.5, 0.35, 11), matWoodTimber);
+    b3Floor2.position.set(0, 7.6, 0);
+    bldg3Group.add(b3Floor2);
+    this.obstacleColliders.push(b3Floor2);
+
+    // Half-Collapsed Terracotta Tile Roof
+    const b3Roof = new THREE.Mesh(new THREE.BoxGeometry(15, 0.3, 7.5), matRoofTerra);
+    b3Roof.position.set(0, 11.8, -2.5);
+    b3Roof.rotation.x = -0.44;
+    bldg3Group.add(b3Roof);
+    this.obstacleColliders.push(b3Roof);
+
+    // Multi-Level Exposed Interior Furniture (visible from elevated aerial survey!)
+    // Ground floor kitchen counter & table
+    const table = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 1.2), matWoodBroken);
+    table.position.set(-2, 0.4, -1);
+    table.rotation.z = 0.2;
+    bldg3Group.add(table);
+
+    // 2nd floor bedroom bed
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 1.8), new THREE.MeshStandardMaterial({ color: 0x2563eb }));
+    bed.position.set(-3.5, 4.15, 1.5);
+    bldg3Group.add(bed);
+
+    // Dangling ceiling timber rafter beam angled across room
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 7.2), matWoodTimber);
+    beam.position.set(-1.0, 2.2, 1.2);
+    beam.rotation.set(0.42, 0.22, -0.32);
+    bldg3Group.add(beam);
+
+    // Massive Red Brick Rubble Spill Cone pouring out 12m onto sidewalk
+    const brickRubbleCone = new THREE.Mesh(new THREE.ConeGeometry(6.5, 2.5, 8), matBrickRed);
+    brickRubbleCone.position.set(0, 1.25, 6.8);
+    bldg3Group.add(brickRubbleCone);
+    this.obstacleColliders.push(brickRubbleCone);
+
+    this.environmentGroup.add(bldg3Group);
+
+    // =========================================================================
+    // BUILDING 4: "Apex Financial Tower" - Soft-Storey Ground Failure & Slumping Tower
+    // Commercial tower with sheared ground floor columns at (25, 0, 10)
+    // =========================================================================
+    const bldg4Group = new THREE.Group();
+    bldg4Group.position.set(25, 0, 10);
+
+    // Upper 4 floors mass (slumped down by 3.5m and tilted)
+    const b4Upper = new THREE.Mesh(new THREE.BoxGeometry(18, 15, 15), matMidConcrete);
+    b4Upper.position.y = 10.5;
+    b4Upper.castShadow = true;
+    bldg4Group.add(b4Upper);
+    this.obstacleColliders.push(b4Upper);
+
+    // Continuous ribbon glass windows
+    for (let f = 1; f <= 4; f++) {
+      const winRibbon = new THREE.Mesh(new THREE.BoxGeometry(16.8, 1.6, 0.25), matGlassDark);
+      winRibbon.position.set(0, 4.8 + f * 3.2, 7.55);
+      bldg4Group.add(winRibbon);
+    }
+
+    // Ground floor soft-storey crushed columns (sheared sideways at 30° angles)
+    [-7, -2.5, 2.5, 7].forEach((colX, idx) => {
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.52, 3.8, 8), matDarkConcrete);
+      col.position.set(colX, 1.8, 6.8);
+      col.rotation.z = (idx % 2 === 0 ? 0.32 : -0.35);
+      bldg4Group.add(col);
+      this.obstacleColliders.push(col);
+    });
+
+    // West Steel Fire Escape with platform sheltering waving Survivor 5 (SURV-EQ-05)
+    const b4EscapePlatform = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.35, 4.8), matSteelBeam);
+    b4EscapePlatform.position.set(-9.8, 5.8, 2.0);
+    bldg4Group.add(b4EscapePlatform);
+    this.obstacleColliders.push(b4EscapePlatform);
+
+    const b4EscapeRail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.95, 4.8), matRebar);
+    b4EscapeRail.position.set(-10.8, 6.4, 2.0);
+    bldg4Group.add(b4EscapeRail);
+
+    // 4th Floor Corner Breach Terrace sheltering waving office worker SURV-EQ-12
+    const b4CornerFloor = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.45, 4.8), matSlabConcrete);
+    b4CornerFloor.position.set(6.8, 13.8, 5.5);
+    bldg4Group.add(b4CornerFloor);
+    this.obstacleColliders.push(b4CornerFloor);
+
+    // Broken corner column and bent rebar
+    const b4BrokenCol = new THREE.Mesh(new THREE.BoxGeometry(0.65, 2.2, 0.65), matDarkConcrete);
+    b4BrokenCol.position.set(8.8, 15.0, 7.5);
+    b4BrokenCol.rotation.set(0.22, 0.12, -0.32);
+    bldg4Group.add(b4BrokenCol);
+
+    for (let r = 0; r < 4; r++) {
+      const rebar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.4, 6), matRebar);
+      rebar.position.set(5.8 + r * 1.0, 14.1, 7.6);
+      rebar.rotation.x = 0.45 + (r % 2 === 0 ? 0.2 : -0.2);
+      bldg4Group.add(rebar);
+    }
+
+    // Leaning tilt from soft-storey failure
+    bldg4Group.rotation.z = -0.09;
+    bldg4Group.rotation.x = 0.04;
+    this.environmentGroup.add(bldg4Group);
+
+    // =========================================================================
+    // BUILDING 5: "Sunset Duplex" - Sandwich V-Shape Roof Collapse
+    // Center snapped inward creating protective survival triangle at (-42, 0, 14)
+    // =========================================================================
+    const bldg5Group = new THREE.Group();
+    bldg5Group.position.set(-42, 0, 14);
+
+    const b5Base = new THREE.Mesh(new THREE.BoxGeometry(12, 0.5, 11), matSlabConcrete);
+    b5Base.position.set(0, 0.25, 0);
+    bldg5Group.add(b5Base);
+    this.obstacleColliders.push(b5Base);
+
+    // Tilted floor slabs forming lean-to
+    const b5Tilt1 = new THREE.Mesh(new THREE.BoxGeometry(11, 0.55, 10), matSlabConcrete);
+    b5Tilt1.position.set(-1.5, 1.8, 0);
+    b5Tilt1.rotation.set(0.14, 0.06, 0.18);
+    bldg5Group.add(b5Tilt1);
+    this.obstacleColliders.push(b5Tilt1);
+
+    const b5Tilt2 = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 9), matSlabConcrete);
+    b5Tilt2.position.set(-2.0, 3.0, 0);
+    b5Tilt2.rotation.set(-0.10, 0.08, 0.24);
+    bldg5Group.add(b5Tilt2);
+    this.obstacleColliders.push(b5Tilt2);
+
+    // Collapsed wooden staircase creating protective survival cavity for child SURV-EQ-09
+    const b5Stair = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.28, 4.8), matWoodTimber);
+    b5Stair.position.set(2.0, 1.3, 0.5);
+    b5Stair.rotation.set(0.44, 0.12, -0.28);
+    bldg5Group.add(b5Stair);
+    this.obstacleColliders.push(b5Stair);
+
+    this.environmentGroup.add(bldg5Group);
+
+    // =========================================================================
+    // BUILDING 6: Leveled Industrial Warehouse Ruin (Total Collapse Mound)
+    // Leveled into massive concrete, metal & truss mound at (44, 0, -42)
+    // =========================================================================
+    const bldg6Group = new THREE.Group();
+    bldg6Group.position.set(44, 0, -42);
+
+    const b6Mound = new THREE.Mesh(new THREE.ConeGeometry(11, 5.5, 8), matRubbleBrown);
+    b6Mound.position.y = 2.75;
+    bldg6Group.add(b6Mound);
+    this.obstacleColliders.push(b6Mound);
+
+    // Fractured precast concrete beams sticking out
+    for (let bm = 0; bm < 5; bm++) {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 9.5), matMidConcrete);
+      beam.position.set((bm - 2) * 3.5, 3.2, (bm % 2 === 0 ? 2 : -2));
+      beam.rotation.set(0.4 * (bm % 2 === 0 ? 1 : -1), 0.5 * bm, -0.35);
+      bldg6Group.add(beam);
+      this.obstacleColliders.push(beam);
+    }
+
+    // Crumpled corrugated sheet metal panels
+    for (let cp = 0; cp < 4; cp++) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.1, 3.5), matRoofTinGalv);
+      panel.position.set((cp - 1.5) * 4, 3.8, (cp % 2 === 0 ? -3 : 3));
+      panel.rotation.set(0.5, 0.3 * cp, -0.4);
+      bldg6Group.add(panel);
+    }
+
+    this.environmentGroup.add(bldg6Group);
+
+    // =========================================================================
+    // BUILDING 7: Westside Commercial Bazaar Block
+    // Crumpled roll-up shutters & collapsed concrete canopy at (14, 0, -32)
+    // =========================================================================
+    const bldg7Group = new THREE.Group();
+    bldg7Group.position.set(14, 0, -32);
+
+    const b7Body = new THREE.Mesh(new THREE.BoxGeometry(18, 4.6, 8.5), matWallBeige);
+    b7Body.position.y = 2.3;
+    bldg7Group.add(b7Body);
+    this.obstacleColliders.push(b7Body);
+
+    // 3 roll-up shop shutters (dented & buckled)
+    [-5.5, 0, 5.5].forEach((sx, idx) => {
+      const shutter = new THREE.Mesh(new THREE.BoxGeometry(4.4, 3.2, 0.2), matRoofTinGalv);
+      shutter.position.set(sx, 1.6, 4.3);
+      shutter.rotation.y = (idx === 1 ? 0.18 : -0.12);
+      bldg7Group.add(shutter);
+    });
+
+    // Collapsed heavy concrete awning hanging onto sidewalk
+    const b7Awning = new THREE.Mesh(new THREE.BoxGeometry(19, 0.22, 3.4), matDarkConcrete);
+    b7Awning.position.set(0, 1.8, 5.4);
+    b7Awning.rotation.x = 0.58;
+    bldg7Group.add(b7Awning);
+    this.obstacleColliders.push(b7Awning);
+
+    this.environmentGroup.add(bldg7Group);
+
+    // =========================================================================
+    // BUILDING 8: 4-Storey Apartment Complex (Diagonal Shear Ruptures)
+    // Severe structural cracking & 2 fallen balconies at (38, 0, 26)
+    // =========================================================================
+    const bldg8Group = new THREE.Group();
+    bldg8Group.position.set(38, 0, 26);
+
+    const b8Body = new THREE.Mesh(new THREE.BoxGeometry(16, 14, 13), matWallCream);
+    b8Body.position.y = 7.0;
+    b8Body.castShadow = true;
+    bldg8Group.add(b8Body);
+    this.obstacleColliders.push(b8Body);
+
+    // Massive diagonal shear cracks
+    const b8Crack = new THREE.Mesh(new THREE.BoxGeometry(0.35, 14, 0.15), matCrackedAsphalt);
+    b8Crack.position.set(0, 7.0, 6.55);
+    b8Crack.rotation.z = 0.48;
+    bldg8Group.add(b8Crack);
+
+    // 2 Fallen Balconies smashed on sidewalk
+    [-3.5, 3.5].forEach((bx, idx) => {
+      const fBalc = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.4, 2.0), matLightConcrete);
+      fBalc.position.set(bx, 0.4, 8.2 + idx * 0.6);
+      fBalc.rotation.set(0.22 * (idx === 0 ? 1 : -1), 0.35, 0.15);
+      bldg8Group.add(fBalc);
+      this.obstacleColliders.push(fBalc);
+    });
+
+    this.environmentGroup.add(bldg8Group);
+
+    // =========================================================================
+    // BUILDING 9: Civic Heritage Hall (Colonnade Failure)
+    // Toppled fluted entrance columns at (-22, 0, -8)
+    // =========================================================================
+    const bldg9Group = new THREE.Group();
+    bldg9Group.position.set(-22, 0, -8);
+
+    const b9Body = new THREE.Mesh(new THREE.BoxGeometry(16, 8.5, 12), matPaleConcrete);
+    b9Body.position.y = 4.25;
+    b9Body.castShadow = true;
+    bldg9Group.add(b9Body);
+    this.obstacleColliders.push(b9Body);
+
+    // Collapsed triangular stone pediment
+    const pediment = new THREE.Mesh(new THREE.ConeGeometry(7.5, 3.2, 4), matLightConcrete);
+    pediment.position.set(0, 9.8, 0);
+    pediment.rotation.y = Math.PI / 4;
+    pediment.rotation.z = 0.18; // Fractured skewed angle
+    bldg9Group.add(pediment);
+    this.obstacleColliders.push(pediment);
+
+    // Toppled stone columns broken into drums across steps
+    [-3.5, 0, 3.5].forEach((cx, idx) => {
+      const colDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 4.5, 10), matLightConcrete);
+      colDrum.position.set(cx, 0.5, 7.5 + idx * 0.4);
+      colDrum.rotation.z = Math.PI / 2 + 0.1;
+      colDrum.rotation.y = 0.35 * (idx % 2 === 0 ? 1 : -1);
+      bldg9Group.add(colDrum);
+      this.obstacleColliders.push(colDrum);
+    });
+
+    this.environmentGroup.add(bldg9Group);
+
+    // =========================================================================
+    // BUILDING 10: Neighborhood Medical Clinic (Collapsed Portico)
+    // Cracked clinic with collapsed ambulance entrance at (-28, 0, 30)
+    // =========================================================================
+    const bldg10Group = new THREE.Group();
+    bldg10Group.position.set(-28, 0, 30);
+
+    const b10Body = new THREE.Mesh(new THREE.BoxGeometry(14, 8.0, 11), matPaleConcrete);
+    b10Body.position.y = 4.0;
+    b10Body.castShadow = true;
+    bldg10Group.add(b10Body);
+    this.obstacleColliders.push(b10Body);
+
+    // Red Cross emblem
+    const crossH = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.55, 0.1), matHazardRed);
+    crossH.position.set(0, 6.2, 5.56);
+    bldg10Group.add(crossH);
+    const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.0, 0.1), matHazardRed);
+    crossV.position.set(0, 6.2, 5.56);
+    bldg10Group.add(crossV);
+
+    // Collapsed ambulance portico canopy resting on pavement
+    const portico = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.35, 4.5), matMidConcrete);
+    portico.position.set(0, 1.2, 7.5);
+    portico.rotation.x = 0.45;
+    bldg10Group.add(portico);
+    this.obstacleColliders.push(portico);
+
+    this.environmentGroup.add(bldg10Group);
+
+    // =========================================================================
+    // BUILDING 11: Suburban Villa with Split Terracotta Roof
+    // Split hip roof with broken ridge tiles at (-48, 0, -38)
+    // =========================================================================
+    const bldg11Group = new THREE.Group();
+    bldg11Group.position.set(-48, 0, -38);
+
+    const b11Body = new THREE.Mesh(new THREE.BoxGeometry(13, 5.0, 10), matWallSkyBlue);
+    b11Body.position.y = 2.5;
+    bldg11Group.add(b11Body);
+    this.obstacleColliders.push(b11Body);
+
+    const b11Roof = new THREE.Mesh(new THREE.ConeGeometry(9.0, 3.4, 4), matRoofTerra);
+    b11Roof.position.y = 6.4;
+    b11Roof.rotation.y = Math.PI / 4;
+    b11Roof.rotation.z = 0.25; // Tilted split roof
+    bldg11Group.add(b11Roof);
+    this.obstacleColliders.push(b11Roof);
+
+    this.environmentGroup.add(bldg11Group);
+
+    // =========================================================================
+    // BUILDING 12: Single-Storey Bungalow with Collapsed Chimney
+    // Brick chimney crashed through veranda at (18, 0, 38)
+    // =========================================================================
+    const bldg12Group = new THREE.Group();
+    bldg12Group.position.set(18, 0, 38);
+
+    const b12Body = new THREE.Mesh(new THREE.BoxGeometry(12, 4.6, 9), matWallPastelGreen);
+    b12Body.position.y = 2.3;
+    bldg12Group.add(b12Body);
+    this.obstacleColliders.push(b12Body);
+
+    const b12Roof = new THREE.Mesh(new THREE.ConeGeometry(8.2, 2.8, 4), matRoofSlate);
+    b12Roof.position.y = 5.9;
+    b12Roof.rotation.y = Math.PI / 4;
+    bldg12Group.add(b12Roof);
+    this.obstacleColliders.push(b12Roof);
+
+    // Heavy sheared brick chimney fallen onto porch
+    const fallenChimney = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.4, 1.3), matBrickRed);
+    fallenChimney.position.set(3.4, 1.0, 4.8);
+    fallenChimney.rotation.set(0.45, 0.22, 1.15);
+    bldg12Group.add(fallenChimney);
+
+    this.environmentGroup.add(bldg12Group);
+
+    // =========================================================================
+    // BUILDING 13 & 14: Perimeter Ruined Structures (Ensuring 70%+ Area Destruction)
+    // =========================================================================
+    // Building 13: South-West Ruined Apartment at (-44, 0, 38)
+    const bldg13Group = new THREE.Group();
+    bldg13Group.position.set(-44, 0, 38);
+    const b13Body = new THREE.Mesh(new THREE.BoxGeometry(14, 9.0, 11), matLightConcrete);
+    b13Body.position.y = 4.5;
+    bldg13Group.add(b13Body);
+    this.obstacleColliders.push(b13Body);
+    const b13Crack = new THREE.Mesh(new THREE.BoxGeometry(0.35, 9.2, 0.15), matCrackedAsphalt);
+    b13Crack.position.set(1.5, 4.5, 5.55);
+    b13Crack.rotation.z = -0.35;
+    bldg13Group.add(b13Crack);
+    this.environmentGroup.add(bldg13Group);
+
+    // Building 14: South-East Ruined Commercial Block at (44, 0, 40)
+    const bldg14Group = new THREE.Group();
+    bldg14Group.position.set(44, 0, 40);
+    const b14Body = new THREE.Mesh(new THREE.BoxGeometry(15, 8.5, 12), matPaleConcrete);
+    b14Body.position.y = 4.25;
+    bldg14Group.add(b14Body);
+    this.obstacleColliders.push(b14Body);
+    this.environmentGroup.add(bldg14Group);
+
+    // -------------------------------------------------------------------------
+    // 5. COLLAPSED PRECAST VOIDS, VEHICLES & INFRASTRUCTURE
+    // -------------------------------------------------------------------------
+
+    // A. Central Boulevard Collapsed Precast Highway Slab Void at (-6.5, 0, -6)
+    // Protective cavity sheltering Survivor SURV-EQ-01
+    const voidSlab = new THREE.Mesh(new THREE.BoxGeometry(8.0, 0.70, 6.0), matSlabConcrete);
+    voidSlab.position.set(-6.5, 1.6, -6.0);
+    voidSlab.rotation.set(0.32, 0.15, -0.28);
+    voidSlab.castShadow = true;
+    this.environmentGroup.add(voidSlab);
+    this.obstacleColliders.push(voidSlab);
+
+    const voidSupport = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.3, 2.8), matDarkConcrete);
+    voidSupport.position.set(-8.8, 0.65, -6.5);
+    this.environmentGroup.add(voidSupport);
+    this.obstacleColliders.push(voidSupport);
+
+    // B. Collapsed Brick Boundary Wall at (12, 0, -12) (Sheltering Survivor SURV-EQ-06)
+    [-3.2, 0, 3.2].forEach((wx, idx) => {
+      const wSec = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.4, 0.4), matBrickRed);
+      wSec.position.set(12 + wx, 0.5, -12 + (idx % 2 === 0 ? 0.4 : -0.3));
+      wSec.rotation.set(0.32 * (idx % 2 === 0 ? 1 : -1), 0.1, 0.2);
+      this.environmentGroup.add(wSec);
+      this.obstacleColliders.push(wSec);
+    });
+
+    // C. Urban Assembly Park at (-14, 0, 18)
+    const parkGround = new THREE.Mesh(new THREE.BoxGeometry(16, 0.2, 14), new THREE.MeshStandardMaterial({ color: 0x365314, roughness: 0.9 }));
+    parkGround.position.set(-14, 0.2, 18);
+    this.environmentGroup.add(parkGround);
+    this.obstacleColliders.push(parkGround);
+
+    const fallenTree = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 7.5, 8), matTrunkBrown);
+    fallenTree.position.set(-12, 0.4, 21);
+    fallenTree.rotation.z = Math.PI / 2 + 0.2;
+    fallenTree.rotation.y = 0.35;
+    this.environmentGroup.add(fallenTree);
+    this.obstacleColliders.push(fallenTree);
+
+    // D. Scattered Vehicles (Civilian, Crushed & Overturned)
+    // 1. Red Passenger Sedan Crushed under concrete slab at (4.5, 0, 15.5) (Sheltering driver SURV-EQ-11)
+    const carGroup = new THREE.Group();
+    carGroup.position.set(4.5, 0, 15.5);
+    carGroup.rotation.y = 0.35;
+
+    const carChassis = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.4, 2.0), matCarRed);
+    carChassis.position.y = 0.25;
+    carGroup.add(carChassis);
+    this.obstacleColliders.push(carChassis);
+
+    const carHood = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.45, 1.9), matCarRed);
+    carHood.position.set(1.3, 0.55, 0);
+    carGroup.add(carHood);
+
+    const carTrunk = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.45, 1.9), matCarRed);
+    carTrunk.position.set(-1.4, 0.55, 0);
+    carGroup.add(carTrunk);
+
+    [[-1.3, -0.95], [-1.3, 0.95], [1.2, -0.95], [1.2, 0.95]].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.22, 10), matCarTire);
+      wheel.rotation.x = Math.PI / 2;
+      wheel.position.set(wx, 0.32, wz);
+      carGroup.add(wheel);
+    });
+
+    const roofPillar = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 1.8), matCarRed);
+    roofPillar.position.set(-0.2, 1.15, -0.2);
+    roofPillar.rotation.set(0.2, 0.1, 0.25);
+    carGroup.add(roofPillar);
+
+    this.environmentGroup.add(carGroup);
+
+    // Concrete slab fallen across rear trunk of sedan
+    const carSlab = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.55, 3.4), matSlabConcrete);
+    carSlab.position.set(3.0, 1.35, 15.2);
+    carSlab.rotation.set(0.28, 0.15, -0.25);
+    this.environmentGroup.add(carSlab);
+    this.obstacleColliders.push(carSlab);
+
+    // 2. Overturned Yellow Taxi at (8.5, 1.0, 18.0)
+    const taxi = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.3, 2.0), matCarYellow);
+    taxi.position.set(8.5, 1.0, 18.0);
+    taxi.rotation.set(0.4, 0.2, 1.4); // Rolled onto side
+    this.environmentGroup.add(taxi);
+    this.obstacleColliders.push(taxi);
+
+    // 3. Crushed White Compact Car near Metropolis Tower at (-18, 0, -24)
+    const compactCar = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.1, 1.8), matCarWhite);
+    compactCar.position.set(-18, 0.55, -24);
+    compactCar.rotation.set(0.15, -0.4, 0.1);
+    this.environmentGroup.add(compactCar);
+    this.obstacleColliders.push(compactCar);
+
+    // 4. Abandoned Delivery Van at (-8, 0, -28)
+    const van = new THREE.Mesh(new THREE.BoxGeometry(5.2, 2.0, 2.2), matPaleConcrete);
+    van.position.set(-8, 1.0, -28);
+    van.rotation.y = 0.22;
+    this.environmentGroup.add(van);
+    this.obstacleColliders.push(van);
+
+    // E. 4 Fallen Concrete Utility Poles with Tangled Wires
+    const fallenPoles = [
+      { x: 3.5,  y: 0.35, z: 13.5, rotZ: Math.PI / 2 + 0.1, rotY: 0.4 },
+      { x: -22,  y: 0.35, z: 16.5, rotZ: Math.PI / 2 + 0.15, rotY: -0.3 },
+      { x: 8.0,  y: 0.35, z: -12.0,rotZ: Math.PI / 2 + 0.08, rotY: 0.25 },
+      { x: -10,  y: 0.35, z: 34.0, rotZ: Math.PI / 2 + 0.12, rotY: -0.4 }
+    ];
+    fallenPoles.forEach(fp => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 12, 8), matLightConcrete);
+      pole.position.set(fp.x, fp.y, fp.z);
+      pole.rotation.z = fp.rotZ;
+      pole.rotation.y = fp.rotY;
       this.environmentGroup.add(pole);
       this.obstacleColliders.push(pole);
 
-      // Fallen transformer canister
-      const trans = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.2, 12), rebarMat);
-      trans.position.set(x + 4, 0.6, 9);
-      trans.rotation.x = Math.PI / 2;
+      // Transformer cylinder on pole
+      const trans = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.1, 10), matSteelBeam);
+      trans.position.set(fp.x + 3.5, fp.y + 0.2, fp.z + 1.2);
       this.environmentGroup.add(trans);
     });
 
-    // 7. Abandoned Crushed Vehicles under Slabs
-    const carMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.5 });
-    const car = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.3, 2.1), carMat);
-    car.position.set(-6, 0.7, 14);
-    car.rotation.y = 0.4;
-    this.environmentGroup.add(car);
-    this.obstacleColliders.push(car);
+    // -------------------------------------------------------------------------
+    // 6. EXTENSIVE RUBBLE FIELD & SCATTERED MASONRY (DENSE DESTRUCTION)
+    // -------------------------------------------------------------------------
+    const rubbleClusters = [
+      // Metropolis Towers Collapse Field
+      { x: -24, z: -22, w: 4.8, h: 2.0, d: 3.8, mat: matDarkConcrete, rot: 0.25 },
+      { x: -22, z: -27, w: 3.5, h: 1.6, d: 4.5, mat: matRubbleBeige, rot: -0.3 },
+      { x: -36, z: -20, w: 5.5, h: 2.4, d: 4.0, mat: matRubbleTan, rot: 0.15 },
+      { x: -34, z: -34, w: 4.2, h: 1.8, d: 4.2, mat: matDarkConcrete, rot: 0.4 },
 
-    // Slab crushing vehicle hood
-    const crushSlab = new THREE.Mesh(new THREE.BoxGeometry(6, 0.6, 4), darkConcrete);
-    crushSlab.position.set(-5.5, 1.4, 15);
-    crushSlab.rotation.set(0.3, 0.2, -0.2);
-    this.environmentGroup.add(crushSlab);
-    this.obstacleColliders.push(crushSlab);
+      // Grand Plaza Mall Pancaked Debris Field
+      { x: 23,  z: -20, w: 4.5, h: 1.6, d: 4.0, mat: matSlabConcrete, rot: 0.35 },
+      { x: 38,  z: -14, w: 5.0, h: 2.0, d: 3.5, mat: matMidConcrete, rot: -0.2 },
+      { x: 26,  z: -26, w: 5.5, h: 2.2, d: 4.2, mat: matRubbleTan, rot: 0.18 },
+      { x: 42,  z: -24, w: 4.0, h: 1.5, d: 3.8, mat: matRubbleBeige, rot: -0.4 },
 
-    // 8. 5 Visible Earthquake Survivors (NDRF START Triage Protocol)
-    // Survivor 1: Trapped under concrete slab in rubble void (RED: Immediate)
+      // Townhouse Brick & Timber Debris
+      { x: -38, z: -6,  w: 3.8, h: 1.4, d: 3.2, mat: matBrickRed, rot: 0.2 },
+      { x: -46, z: -6,  w: 4.2, h: 1.8, d: 3.0, mat: matBrickBrown, rot: -0.15 },
+      { x: -50, z: -16, w: 3.5, h: 1.5, d: 3.8, mat: matBrickRed, rot: 0.45 },
+
+      // Leveled Warehouse Debris
+      { x: 34,  z: -36, w: 4.5, h: 1.8, d: 3.8, mat: matRubbleBrown, rot: 0.3 },
+      { x: 44,  z: -34, w: 4.0, h: 1.5, d: 4.2, mat: matSlabConcrete, rot: -0.25 },
+      { x: 34,  z: -48, w: 4.8, h: 2.0, d: 3.5, mat: matMidConcrete, rot: 0.15 },
+
+      // Fault Scarp Road Debris Blocks
+      { x: -14, z: -14, w: 3.6, h: 0.9, d: 2.6, mat: matAsphalt, rot: 0.18 },
+      { x: -3,  z: -15, w: 3.0, h: 0.8, d: 2.4, mat: matCrackedAsphalt, rot: -0.25 },
+      { x: 5,   z: -13, w: 3.4, h: 0.9, d: 2.8, mat: matAsphalt, rot: 0.3 },
+      { x: 14,  z: -14, w: 4.0, h: 1.0, d: 3.0, mat: matCrackedAsphalt, rot: -0.15 },
+
+      // Boulevard Sidewalk Rubble Piles
+      { x: -11.5, z: -26, w: 2.8, h: 1.2, d: 3.6, mat: matRubbleBeige, rot: 0.1 },
+      { x: 11.5,  z: -24, w: 3.0, h: 1.3, d: 3.2, mat: matDarkConcrete, rot: -0.2 },
+      { x: -11.5, z: 6,   w: 2.6, h: 1.0, d: 3.4, mat: matLightConcrete, rot: 0.3 },
+      { x: 11.5,  z: 8,   w: 3.2, h: 1.1, d: 3.0, mat: matDarkConcrete, rot: -0.18 },
+      { x: -11.5, z: 32,  w: 3.0, h: 1.2, d: 3.4, mat: matRubbleBeige, rot: 0.22 },
+      { x: 11.5,  z: 34,  w: 3.4, h: 1.3, d: 3.2, mat: matDarkConcrete, rot: -0.3 }
+    ];
+
+    rubbleClusters.forEach(rc => {
+      const chunk = new THREE.Mesh(new THREE.BoxGeometry(rc.w, rc.h, rc.d), rc.mat);
+      chunk.position.set(rc.x, rc.h / 2 + 0.1, rc.z);
+      chunk.rotation.set(0.15 * Math.sin(rc.rot), rc.rot, 0.12 * Math.cos(rc.rot));
+      chunk.castShadow = true;
+      this.environmentGroup.add(chunk);
+      this.obstacleColliders.push(chunk);
+    });
+
+    // Exposed Twisted Steel Rebar Struts protruding from Rubble
+    const rebarCoords = [
+      { x: -23, z: -21, rot: 0.6 },
+      { x: -35, z: -21, rot: -0.5 },
+      { x: 25,  z: -19, rot: 0.4 },
+      { x: 37,  z: -15, rot: -0.7 },
+      { x: -13, z: -14, rot: 0.8 },
+      { x: 6,   z: -13, rot: -0.6 },
+      { x: -11, z: 7,   rot: 0.5 },
+      { x: 11,  z: 9,   rot: -0.4 },
+      { x: -23, z: 25,  rot: 0.7 },
+      { x: 21,  z: 33,  rot: -0.5 }
+    ];
+    rebarCoords.forEach(rb => {
+      const rebar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.8, 6), matRebar);
+      rebar.position.set(rb.x, 1.6, rb.z);
+      rebar.rotation.set(rb.rot, rb.rot * 1.5, 0.3);
+      this.environmentGroup.add(rebar);
+    });
+
+    // -------------------------------------------------------------------------
+    // 7. ACTIVE EMERGENCY-RESPONSE ELEMENTS (RESPONDERS, VEHICLES, BARRICADES)
+    // Conveys that this is an active modern disaster-response training simulation
+    // -------------------------------------------------------------------------
+
+    // A. NDRF Search & Rescue Command Vehicle / Ambulance at (0, 0, 56)
+    const ndrfTruckGroup = new THREE.Group();
+    ndrfTruckGroup.position.set(0, 0, 56);
+
+    // Truck Body (Van/Box Ambulance)
+    const truckBody = new THREE.Mesh(new THREE.BoxGeometry(6.5, 2.6, 2.6), matNdrfWhite);
+    truckBody.position.set(0, 1.7, 0);
+    ndrfTruckGroup.add(truckBody);
+    this.obstacleColliders.push(truckBody);
+
+    // Lower Navy Stripe
+    const truckStripe = new THREE.Mesh(new THREE.BoxGeometry(6.52, 0.6, 2.62), matNdrfNavy);
+    truckStripe.position.set(0, 1.1, 0);
+    ndrfTruckGroup.add(truckStripe);
+
+    // High-Vis Orange Reflective Chevrons on sides
+    [-1.0, 1.0].forEach(sx => {
+      const chevron = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.35, 2.64), matHazardOrange);
+      chevron.position.set(sx, 1.8, 0);
+      ndrfTruckGroup.add(chevron);
+    });
+
+    // Windshield & Cabin Glass
+    const truckWindshield = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 2.2), matGlassDark);
+    truckWindshield.position.set(3.26, 2.0, 0);
+    ndrfTruckGroup.add(truckWindshield);
+
+    // Wheels
+    [[-2.0, -1.35], [-2.0, 1.35], [2.0, -1.35], [2.0, 1.35]].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.35, 12), matCarTire);
+      wheel.rotation.x = Math.PI / 2;
+      wheel.position.set(wx, 0.45, wz);
+      ndrfTruckGroup.add(wheel);
+    });
+
+    // Roof Emergency Beacon Lightbar (Flashing Red/Blue in Day & Night!)
+    const lightBar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.22, 1.8), matNdrfNavy);
+    lightBar.position.set(1.5, 3.1, 0);
+    ndrfTruckGroup.add(lightBar);
+
+    this.environmentGroup.add(ndrfTruckGroup);
+    this.addEmergencyBeaconLight(new THREE.Vector3(1.5, 3.3, 56), true);
+
+    // B. Rapid Response Rescue 4x4 Truck at (-16, 0, 48)
+    const pickupGroup = new THREE.Group();
+    pickupGroup.position.set(-16, 0, 48);
+    pickupGroup.rotation.y = 0.3;
+
+    const pickupCab = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.8, 2.2), matNdrfWhite);
+    pickupCab.position.set(0, 1.2, 0);
+    pickupGroup.add(pickupCab);
+    this.obstacleColliders.push(pickupCab);
+
+    const pickupBed = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 2.1), matHazardOrange);
+    pickupBed.position.set(-1.2, 1.2, 0);
+    pickupGroup.add(pickupBed);
+
+    [[-1.5, -1.15], [-1.5, 1.15], [1.5, -1.15], [1.5, 1.15]].forEach(([wx, wz]) => {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 10), matCarTire);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(wx, 0.4, wz);
+      pickupGroup.add(w);
+    });
+
+    this.environmentGroup.add(pickupGroup);
+    this.addEmergencyBeaconLight(new THREE.Vector3(-16, 2.4, 48), true);
+
+    // C. 5 Stylized NDRF Emergency Responders
+    const createResponder = (x, z, rotY) => {
+      const respGroup = new THREE.Group();
+      respGroup.position.set(x, 0, z);
+      respGroup.rotation.y = rotY;
+
+      // Navy tactical trousers
+      const lLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.82), matNdrfNavy);
+      lLeg.position.set(-0.16, 0.41, 0);
+      const rLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.82), matNdrfNavy);
+      rLeg.position.set(0.16, 0.41, 0);
+      respGroup.add(lLeg);
+      respGroup.add(rLeg);
+
+      // High-vis orange tactical rescue jacket
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 0.85, 10), matHazardOrange);
+      torso.position.y = 0.85;
+      torso.castShadow = true;
+      respGroup.add(torso);
+      this.obstacleColliders.push(torso);
+
+      // Reflective silver stripes
+      const sMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+      const s1 = new THREE.Mesh(new THREE.CylinderGeometry(0.285, 0.28, 0.08, 10), sMat);
+      s1.position.y = 1.0;
+      respGroup.add(s1);
+      const s2 = new THREE.Mesh(new THREE.CylinderGeometry(0.265, 0.26, 0.08, 10), sMat);
+      s2.position.y = 0.68;
+      respGroup.add(s2);
+
+      // Arms
+      const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.65), matHazardOrange);
+      lArm.position.set(-0.35, 0.85, 0.1);
+      lArm.rotation.x = 0.3;
+      const rArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.65), matHazardOrange);
+      rArm.position.set(0.35, 0.85, 0.15);
+      rArm.rotation.x = 0.6;
+      respGroup.add(lArm);
+      respGroup.add(rArm);
+
+      // Head & White Safety Helmet with Headlamp
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.7 }));
+      head.position.y = 1.45;
+      respGroup.add(head);
+
+      const helmetDome = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), matNdrfWhite);
+      helmetDome.position.y = 1.53;
+      respGroup.add(helmetDome);
+
+      const helmetBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 14), matNdrfWhite);
+      helmetBrim.position.y = 1.53;
+      respGroup.add(helmetBrim);
+
+      const headlamp = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.08), new THREE.MeshBasicMaterial({ color: 0xbae6fd }));
+      headlamp.position.set(0, 1.56, 0.28);
+      respGroup.add(headlamp);
+
+      this.environmentGroup.add(respGroup);
+      return respGroup;
+    };
+
+    // Place 5 NDRF Responders at Key Mission Points:
+    createResponder(2.2, 53, -0.6);   // Incident commander near truck
+    createResponder(-1.8, 52, 0.4);   // SAR squad member near staging area
+    createResponder(-6.0, -8.0, 0.2); // Rescuer surveying the primary fault chasm
+    createResponder(-18.0, -18.0, 0.8);// Structural engineer inspecting Metropolis Tower
+    createResponder(-16.0, 17.0, -0.5);// Paramedic assisting walking wounded in Assembly Park
+
+    // D. Temporary Chevron Warning Road Barricades (A-frame barricades)
+    const createChevronBarrier = (x, z, rotY) => {
+      const bGroup = new THREE.Group();
+      bGroup.position.set(x, 0, z);
+      bGroup.rotation.y = rotY;
+
+      [-1.3, 1.3].forEach(lx => {
+        const legA = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.2, 0.08), matNdrfWhite);
+        legA.position.set(lx, 0.6, 0.25);
+        legA.rotation.x = -0.3;
+        bGroup.add(legA);
+
+        const legB = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.2, 0.08), matNdrfWhite);
+        legB.position.set(lx, 0.6, -0.25);
+        legB.rotation.x = 0.3;
+        bGroup.add(legB);
+      });
+
+      const board = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.36, 0.06), matNdrfWhite);
+      board.position.set(0, 0.85, 0);
+      bGroup.add(board);
+      this.obstacleColliders.push(board);
+
+      for (let s = -4; s <= 4; s++) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.38, 0.07), matHazardOrange);
+        stripe.position.set(s * 0.32, 0.85, 0);
+        stripe.rotation.z = 0.45;
+        bGroup.add(stripe);
+      }
+
+      const flasher = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.16, 8), new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
+      flasher.position.set(0, 1.12, 0);
+      bGroup.add(flasher);
+
+      this.environmentGroup.add(bGroup);
+    };
+
+    // Barricades cordoning off the primary fault rupture and unstable zones
+    createChevronBarrier(-6, -6, 0.1);
+    createChevronBarrier(6, -6, -0.15);
+    createChevronBarrier(-16, -18, 0.45);
+    createChevronBarrier(16, 20, -0.25);
+
+    // E. Orange Traffic Hazard Cones
+    const createHazardCone = (x, z) => {
+      const coneGroup = new THREE.Group();
+      coneGroup.position.set(x, 0, z);
+
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.04, 0.48), matHazardOrange);
+      base.position.y = 0.02;
+      coneGroup.add(base);
+
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.75, 10), matHazardOrange);
+      cone.position.y = 0.39;
+      coneGroup.add(cone);
+
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.2, 10), matNdrfWhite);
+      band.position.y = 0.38;
+      coneGroup.add(band);
+
+      this.environmentGroup.add(coneGroup);
+      this.obstacleColliders.push(base);
+    };
+
+    const coneSpots = [
+      [-4, -8], [4, -8], [-9, -8], [9, -8],
+      [2, 22], [-2, 22], [7, 16], [-7, 16]
+    ];
+    coneSpots.forEach(([cx, cz]) => createHazardCone(cx, cz));
+
+    // LED Hazard Strobe Pylons along fault edge
+    this.addEmergencyBeaconLight(new THREE.Vector3(-10, 0.8, -10), true);
+    this.addEmergencyBeaconLight(new THREE.Vector3(10, 0.8, -10), true);
+
+    // -------------------------------------------------------------------------
+    // 8. 12 VISIBLE EARTHQUAKE SURVIVORS (NDRF START TRIAGE PROTOCOL)
+    // Distributed realistically across ground voids, sheared balconies & rubble
+    // -------------------------------------------------------------------------
+
+    // Survivor 1: Adult trapped in rubble void under tilted precast road slab (RED: Immediate)
     this.addSurvivor({
       id: 'SURV-EQ-01',
-      name: 'Trapped Adult in Void (Under Slab)',
-      position: new THREE.Vector3(-9.5, 0.7, -7.5),
+      name: 'Trapped Citizen in Void (Under Slab)',
+      position: new THREE.Vector3(-6.5, 0.7, -6.0),
       posture: 'trapped',
-      temperature: 37.2, // FLIR Thermal Body Heat
+      temperature: 37.2,
       triage: 'RED',
-      vitals: 'HR: 114 bpm | Resp: 28/m | Crush Syndrome Risk',
+      clothingColor: 0xdc2626,
+      vitals: 'HR: 116 bpm | Resp: 28/m | Crush Syndrome Risk | Pinned by Slab',
       gasExposure: 'Trace Methane (24 ppm)',
       detected: false
     });
 
-    // Survivor 2: Injured on cracked 3rd floor balcony waving (YELLOW: Urgent)
+    // Survivor 2: Resident waving distress cloth from 3rd-floor sheared balcony of tilted tower (YELLOW: Urgent)
     this.addSurvivor({
       id: 'SURV-EQ-02',
-      name: 'Resident on Sheared Balcony',
-      position: new THREE.Vector3(-18.5, 14.5, -23),
+      name: 'Resident on Sheared Balcony (3rd Fl)',
+      position: new THREE.Vector3(-25.5, 14.5, -17.8),
       posture: 'waving',
       temperature: 36.9,
       triage: 'YELLOW',
-      vitals: 'HR: 92 bpm | Left Arm Laceration',
+      clothingColor: 0xeab308,
+      flagColor: 0xef4444,
+      vitals: 'HR: 94 bpm | Left Arm Laceration | Stranded at Height',
       gasExposure: 'Clean Air',
       detected: false
     });
 
-    // Survivor 3: Pinned victim in collapsed residential rubble (RED: Critical)
+    // Survivor 3: Pinned victim in commercial mall pancake collapse (RED: Critical)
     this.addSurvivor({
       id: 'SURV-EQ-03',
       name: 'Pinned Survivor (Pancake Rubble)',
-      position: new THREE.Vector3(26, 1.1, -16),
+      position: new THREE.Vector3(30.0, 1.2, -18.0),
       posture: 'trapped',
       temperature: 37.1,
       triage: 'RED',
-      vitals: 'HR: 125 bpm | Shallow Breathing',
-      gasExposure: 'Elevated CO (42 ppm)',
+      clothingColor: 0x2563eb,
+      vitals: 'HR: 128 bpm | Thoracic Compression | Shallow Breathing',
+      gasExposure: 'Trace Dust',
       detected: false
     });
 
-    // Survivor 4: Ambulatory survivor in road clearing (GREEN: Minor)
+    // Survivor 4: Disoriented ambulatory citizen near buckled crossroads (GREEN: Minor)
     this.addSurvivor({
       id: 'SURV-EQ-04',
-      name: 'Disoriented Citizen in Street',
-      position: new THREE.Vector3(2, 0.6, 26),
+      name: 'Disoriented Citizen at Crossroads',
+      position: new THREE.Vector3(-12.0, 0.6, 20.0),
       posture: 'standing',
       temperature: 36.6,
       triage: 'GREEN',
-      vitals: 'Stable | Minor Abrasions',
+      clothingColor: 0x16a34a,
+      vitals: 'Stable | Minor Abrasions | Ambulatory',
       gasExposure: 'Clean Air',
       detected: false
     });
 
-    // Survivor 5: Stranded on exposed external fire escape (YELLOW: Urgent)
+    // Survivor 5: Stranded resident on 2nd-floor office fire escape platform (YELLOW: Urgent)
     this.addSurvivor({
       id: 'SURV-EQ-05',
       name: 'Stranded Resident (Fire Escape)',
-      position: new THREE.Vector3(32, 5.8, -12),
+      position: new THREE.Vector3(14.6, 6.4, 12.0),
       posture: 'waving',
       temperature: 36.8,
       triage: 'YELLOW',
-      vitals: 'HR: 88 bpm | Dehydrated | Non-ambulatory',
+      clothingColor: 0x9333ea,
+      flagColor: 0xfacc15,
+      vitals: 'HR: 88 bpm | Non-ambulatory | Staircase Obstructed',
       gasExposure: 'Clean Air',
       detected: false
     });
 
-    // 9. Hazards: Ruptured Methane Conduit & Structural Smoke
-    this.addGasLeakSource({
-      id: 'HAZ-GAS-01',
-      type: 'Methane (CH4)',
-      position: new THREE.Vector3(-14, 0.4, 10),
-      peakConcentrationPPM: 820,
-      radius: 20,
-      severity: 'EXPLOSIVE HAZARD'
+    // Survivor 6: Injured survivor sitting beside collapsed boundary wall (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-EQ-06',
+      name: 'Injured Civilian beside Wall Rubble',
+      position: new THREE.Vector3(13.0, 0.6, -10.5),
+      posture: 'sitting',
+      temperature: 36.7,
+      triage: 'YELLOW',
+      clothingColor: 0xea580c,
+      vitals: 'HR: 92 bpm | Suspected Tibia Fracture | Conscious',
+      gasExposure: 'Clean Air',
+      detected: false
     });
 
-    this.addFireHazard({
-      id: 'HAZ-FIRE-01',
-      position: new THREE.Vector3(12, 0.6, 18),
-      intensity: 1.4,
-      radius: 6
+    // Survivor 7: Elderly citizen trapped in exposed ground-floor bedroom (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-EQ-07',
+      name: 'Elderly Resident in Sheared Room',
+      position: new THREE.Vector3(-43.0, 0.6, -11.0),
+      posture: 'trapped',
+      temperature: 37.3,
+      triage: 'RED',
+      clothingColor: 0x0284c7,
+      vitals: 'HR: 110 bpm | Dehydrated | Wall Collapsed Inward',
+      gasExposure: 'Clean Air',
+      detected: false
     });
 
-    // Add Emergency Vehicle Beacon Lights (Night-mode effect)
-    this.addEmergencyBeaconLight(new THREE.Vector3(0, 1.2, 55));
-    this.addEmergencyBeaconLight(new THREE.Vector3(-12, 1.2, 48));
+    // Survivor 8: Resident waving distress cloth from rooftop terrace of cracked duplex (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-EQ-08',
+      name: 'Resident on Cracked Duplex Roof',
+      position: new THREE.Vector3(-20.0, 11.2, -8.0),
+      posture: 'waving',
+      temperature: 36.9,
+      triage: 'YELLOW',
+      clothingColor: 0xf43f5e,
+      flagColor: 0xffffff,
+      vitals: 'HR: 86 bpm | Structural Integrity Failing | Evacuation Needed',
+      gasExposure: 'Clean Air',
+      detected: false
+    });
+
+    // Survivor 9: Child huddled in survival void under collapsed residential staircase (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-EQ-09',
+      name: 'Child in Staircase Void',
+      position: new THREE.Vector3(-40.0, 0.55, 12.5),
+      posture: 'trapped',
+      temperature: 37.0,
+      triage: 'RED',
+      clothingColor: 0x38bdf8,
+      vitals: 'HR: 122 bpm | Hypothermia Risk | Protected by Stair Stringer',
+      gasExposure: 'Trace Dust',
+      detected: false
+    });
+
+    // Survivor 10: Rescuer / civilian administering first aid in park clearing (GREEN: Minor)
+    this.addSurvivor({
+      id: 'SURV-EQ-10',
+      name: 'Good Samaritan in Assembly Park',
+      position: new THREE.Vector3(-15.5, 0.6, 17.5),
+      posture: 'standing',
+      temperature: 36.7,
+      triage: 'GREEN',
+      clothingColor: 0xf97316,
+      vitals: 'Stable | Administering First Aid to Walking Wounded',
+      gasExposure: 'Clean Air',
+      detected: false
+    });
+
+    // Survivor 11: Trapped driver in partially crushed vehicle under fallen slab (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-EQ-11',
+      name: 'Trapped Driver in Crushed Vehicle',
+      position: new THREE.Vector3(4.5, 0.55, 16.0),
+      posture: 'trapped',
+      temperature: 37.4,
+      triage: 'RED',
+      clothingColor: 0x475569,
+      vitals: 'HR: 134 bpm | Vehicle Roof Deformed | Hydraulic Cutters Needed',
+      gasExposure: 'Fuel Vapors Present',
+      detected: false
+    });
+
+    // Survivor 12: Office worker signaling from 4th-floor corner breach of commercial bank (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-EQ-12',
+      name: 'Office Worker (Bank 4th Floor)',
+      position: new THREE.Vector3(31.6, 13.6, 15.5),
+      posture: 'waving',
+      temperature: 36.8,
+      triage: 'YELLOW',
+      clothingColor: 0x10b981,
+      flagColor: 0xf59e0b,
+      vitals: 'HR: 90 bpm | Internal Stairwell Smoked Out | Awaiting Aerial Extraction',
+      gasExposure: 'Clean Air',
+      detected: false
+    });
+
+    // -------------------------------------------------------------------------
+    // 9. SUBTLE DUST PLUMES & GAS HAZARD
+    // Light atmospheric debris around collapsed structures, maintaining high visibility
+    // -------------------------------------------------------------------------
+    this.addDustPlume({
+      position: new THREE.Vector3(-28, 2.0, -26),
+      radius: 12,
+      height: 7,
+      particleCount: 70,
+      color: 0xd6cbbe,
+      opacity: 0.24,
+      riseSpeed: 0.40,
+      driftX: 0.30
+    });
+
+    this.addDustPlume({
+      position: new THREE.Vector3(30, 1.8, -20),
+      radius: 14,
+      height: 6,
+      particleCount: 75,
+      color: 0xc4b5a0,
+      opacity: 0.22,
+      riseSpeed: 0.35,
+      driftX: 0.25
+    });
+
+    // -------------------------------------------------------------------------
+    // 10. STRUCTURAL HAZARDS REGISTERED FOR SIMULATION OVERLAY
+    // Tactical bounding boxes with exact required labels:
+    // "STRUCTURAL COLLAPSE", "UNSTABLE BUILDING", "ROAD FRACTURE", "EARTHQUAKE ZONE"
+    // -------------------------------------------------------------------------
+    this.structuralHazards = [
+      {
+        id: 'HAZ-STRUCT-01',
+        boxClass: 'structural',
+        label: 'STRUCTURAL COLLAPSE',
+        sublabel: 'Pancaked Mall | 5 Slabs 99.2%',
+        position: new THREE.Vector3(30, 3.2, -22),
+        minWidth: 70,
+        minHeight: 46,
+        scaleW: 1400,
+        scaleH: 1000,
+        triage: 'RED'
+      },
+      {
+        id: 'HAZ-STRUCT-02',
+        boxClass: 'unstable',
+        label: 'UNSTABLE BUILDING',
+        sublabel: 'Metropolis Tower | Tilt: 8.0°',
+        position: new THREE.Vector3(-28, 14.0, -28),
+        minWidth: 72,
+        minHeight: 52,
+        scaleW: 1500,
+        scaleH: 1200,
+        triage: 'RED'
+      },
+      {
+        id: 'HAZ-STRUCT-03',
+        boxClass: 'road_fracture',
+        label: 'ROAD FRACTURE',
+        sublabel: 'Fault Rupture Scarp 0.9m',
+        position: new THREE.Vector3(0, 0.8, -12),
+        minWidth: 75,
+        minHeight: 42,
+        scaleW: 1600,
+        scaleH: 950,
+        triage: 'RED'
+      },
+      {
+        id: 'HAZ-STRUCT-04',
+        boxClass: 'unstable',
+        label: 'UNSTABLE BUILDING',
+        sublabel: 'Apex Financial | Soft-Storey',
+        position: new THREE.Vector3(25, 7.5, 10),
+        minWidth: 70,
+        minHeight: 48,
+        scaleW: 1400,
+        scaleH: 1050,
+        triage: 'YELLOW'
+      },
+      {
+        id: 'HAZ-STRUCT-05',
+        boxClass: 'structural',
+        label: 'STRUCTURAL COLLAPSE',
+        sublabel: 'Sheared Townhouse | Cavity',
+        position: new THREE.Vector3(-46, 4.5, -12),
+        minWidth: 68,
+        minHeight: 45,
+        scaleW: 1350,
+        scaleH: 950,
+        triage: 'RED'
+      },
+      {
+        id: 'HAZ-STRUCT-06',
+        boxClass: 'structural',
+        label: 'STRUCTURAL COLLAPSE',
+        sublabel: 'Leveled Warehouse Ruin',
+        position: new THREE.Vector3(44, 3.2, -42),
+        minWidth: 68,
+        minHeight: 44,
+        scaleW: 1350,
+        scaleH: 950,
+        triage: 'RED'
+      },
+      {
+        id: 'HAZ-STRUCT-07',
+        boxClass: 'zone',
+        label: 'EARTHQUAKE ZONE',
+        sublabel: 'SAR Sector Alpha-4 | Staging',
+        position: new THREE.Vector3(0, 2.0, 52),
+        minWidth: 75,
+        minHeight: 40,
+        scaleW: 1400,
+        scaleH: 900,
+        triage: 'GREEN'
+      }
+    ];
   }
 
   // =========================================================================
@@ -1851,240 +3289,984 @@ class DisasterEnvironment {
   // SCENARIO 3: REALISTIC INDUSTRIAL GAS LEAK & FACTORY BLAST ENVIRONMENT
   // =========================================================================
   buildIndustrialGasScenario() {
-    const steelMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.85, roughness: 0.3 });
-    const rustMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, metalness: 0.6, roughness: 0.7 });
-    const brightYellow = new THREE.MeshStandardMaterial({ color: 0xeab308, metalness: 0.5, roughness: 0.3 });
-    const darkFactory = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
-    const machineryMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9, roughness: 0.2 });
+    // -------------------------------------------------------------------------
+    // 1. PALETTES & REALISTIC INDUSTRIAL DISASTER MATERIALS
+    // -------------------------------------------------------------------------
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.88, roughness: 0.28 });
+    const steelDark = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.90, roughness: 0.25 });
+    const steelGalv = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.82, roughness: 0.35 });
+    const safetyYellow = new THREE.MeshStandardMaterial({ color: 0xeab308, metalness: 0.5, roughness: 0.35 });
+    const safetyOrange = new THREE.MeshStandardMaterial({ color: 0xea580c, metalness: 0.4, roughness: 0.4 });
+    const rustMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, metalness: 0.6, roughness: 0.75 });
+    const scorchedMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.95 });
 
-    // 1. Exterior Chemical Tank Farm (Spheres, Silos & Manifolds)
-    // Pressurized LPG/Ammonia Spherical Vessel (Ruptured with blast crater)
+    // Machinery & Equipment
+    const machineryMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.22 });
+    const machineGreen = new THREE.MeshStandardMaterial({ color: 0x166534, metalness: 0.72, roughness: 0.35 });
+    const machineBlue = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, metalness: 0.78, roughness: 0.3 });
+    const castIron = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.92, roughness: 0.4 });
+
+    // Industrial Pipelines (Color coded by fluid type)
+    const pipeYellowGas = new THREE.MeshStandardMaterial({ color: 0xeab308, metalness: 0.65, roughness: 0.25 });
+    const pipeRedFire = new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.7, roughness: 0.25 });
+    const pipeSilverSteam = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.85, roughness: 0.2 });
+    const pipeBlueWater = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.65, roughness: 0.3 });
+
+    // Tanks & Vessels
+    const tankSilverMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.85, roughness: 0.25 });
+    const tankWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.45, metalness: 0.2 });
+
+    // Structural Buildings & Siding
+    const corrugatedBlue = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.55, roughness: 0.42 });
+    const corrugatedGrey = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.62, roughness: 0.45 });
+    const darkFactory = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+    const concreteYard = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.88 });
+    const concreteWall = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.82 });
+    const lightConcrete = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.8 });
+    const matWallWhite = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.72 });
+    const matGlassDark = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.15, metalness: 0.85 });
+
+    // -------------------------------------------------------------------------
+    // 2. MAIN PRODUCTION & CHEMICAL PROCESSING HALL WITH OPEN VISIBLE INTERIOR
+    // Massive multi-bay facility (44m wide x 32m deep x 14m high) at (0, 0, -26)
+    // Front wall has a 20m blast breach and cutaway roof trusses for UAV sightlines!
+    // -------------------------------------------------------------------------
+    const factoryGroup = new THREE.Group();
+    factoryGroup.position.set(0, 0, -26);
+
+    // Factory Reinforced Concrete Floor Slab
+    const fFloor = new THREE.Mesh(new THREE.BoxGeometry(44, 0.4, 32), concreteYard);
+    fFloor.position.y = 0.2;
+    fFloor.receiveShadow = true;
+    factoryGroup.add(fFloor);
+    this.obstacleColliders.push(fFloor);
+
+    // Yellow/Black Safety Walkway Borders on Floor
+    [-10, 10].forEach(wx => {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 30), safetyYellow);
+      stripe.position.set(wx, 0.42, 0);
+      factoryGroup.add(stripe);
+    });
+
+    // Solid Back Wall with Industrial Blue Siding
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(44, 14, 1.2), corrugatedBlue);
+    backWall.position.set(0, 7.0, -16);
+    backWall.castShadow = true;
+    factoryGroup.add(backWall);
+    this.obstacleColliders.push(backWall);
+
+    // West Side Wall with Window Apertures
+    const westWall = new THREE.Mesh(new THREE.BoxGeometry(1.2, 14, 32), corrugatedGrey);
+    westWall.position.set(-22, 7.0, 0);
+    westWall.castShadow = true;
+    factoryGroup.add(westWall);
+    this.obstacleColliders.push(westWall);
+
+    // East Side Wall
+    const eastWall = new THREE.Mesh(new THREE.BoxGeometry(1.2, 14, 32), corrugatedGrey);
+    eastWall.position.set(22, 7.0, 0);
+    eastWall.castShadow = true;
+    factoryGroup.add(eastWall);
+    this.obstacleColliders.push(eastWall);
+
+    // FRONT BREACHED WALL (Huge 20-meter opening caused by explosion blast!)
+    // Left remaining wall wing
+    const fWallLeft = new THREE.Mesh(new THREE.BoxGeometry(11, 14, 1.2), corrugatedBlue);
+    fWallLeft.position.set(-16.5, 7.0, 16);
+    fWallLeft.castShadow = true;
+    factoryGroup.add(fWallLeft);
+    this.obstacleColliders.push(fWallLeft);
+
+    // Right remaining wall wing
+    const fWallRight = new THREE.Mesh(new THREE.BoxGeometry(11, 14, 1.2), corrugatedBlue);
+    fWallRight.position.set(16.5, 7.0, 16);
+    fWallRight.castShadow = true;
+    factoryGroup.add(fWallRight);
+    this.obstacleColliders.push(fWallRight);
+
+    // Blast crater scorch marks on front floor breach
+    const scorchDecal = new THREE.Mesh(new THREE.CircleGeometry(7.5, 20), scorchedMat);
+    scorchDecal.rotation.x = -Math.PI / 2;
+    scorchDecal.position.set(-2, 0.42, 14);
+    factoryGroup.add(scorchDecal);
+
+    // ROOF STRUCTURE: Cutaway Bays with Collapsed Steel Portal Trusses
+    // Intact rear roof bay
+    const roofBack = new THREE.Mesh(new THREE.BoxGeometry(44, 0.7, 12), darkFactory);
+    roofBack.position.set(0, 14, -10);
+    factoryGroup.add(roofBack);
+    this.obstacleColliders.push(roofBack);
+
+    // Bent & Twisted steel trusses hanging into the open production hall
+    for (let t = -16; t <= 16; t += 8) {
+      const truss = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.2, 20), steelDark);
+      truss.position.set(t, 13.8, 2);
+      factoryGroup.add(truss);
+
+      // Hanging collapsed segment angled downward
+      const danglingTruss = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 10), steelDark);
+      danglingTruss.position.set(t, 10.5, 7);
+      danglingTruss.rotation.x = 0.65;
+      factoryGroup.add(danglingTruss);
+      this.obstacleColliders.push(danglingTruss);
+    }
+
+    // Overhead Yellow Industrial Gantry Crane Rail traversing under ceiling
+    const craneBeam = new THREE.Mesh(new THREE.BoxGeometry(43, 0.8, 1.2), safetyYellow);
+    craneBeam.position.set(0, 12.2, -4);
+    factoryGroup.add(craneBeam);
+    this.obstacleColliders.push(craneBeam);
+
+    const craneTrolley = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.4, 2.2), safetyYellow);
+    craneTrolley.position.set(-4, 11.6, -4);
+    factoryGroup.add(craneTrolley);
+
+    // -------------------------------------------------------------------------
+    // FACTORY INTERIOR EQUIPMENT & MACHINERY (Fully visible from UAV camera!)
+    // -------------------------------------------------------------------------
+
+    // 1. Massive Industrial Horizontal Steam Boiler (Central Machine)
+    const boilerGroup = new THREE.Group();
+    boilerGroup.position.set(-8, 3.2, -4);
+
+    const boilerShell = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 9.0, 24), machineryMat);
+    boilerShell.rotation.z = Math.PI / 2;
+    boilerShell.castShadow = true;
+    boilerGroup.add(boilerShell);
+    this.obstacleColliders.push(boilerShell);
+
+    // Concrete boiler saddles / cradles
+    [-3.2, 3.2].forEach(bx => {
+      const saddle = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 5.6), concreteWall);
+      saddle.position.set(bx, -1.8, 0);
+      boilerGroup.add(saddle);
+      this.obstacleColliders.push(saddle);
+    });
+
+    // Burner front manifold
+    const burner = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 1.8, 16), castIron);
+    burner.rotation.z = Math.PI / 2;
+    burner.position.set(4.8, 0, 0);
+    boilerGroup.add(burner);
+
+    // Boiler top steam dome & piping
+    const steamDome = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1.4, 12), pipeSilverSteam);
+    steamDome.position.set(0, 2.8, 0);
+    boilerGroup.add(steamDome);
+    factoryGroup.add(boilerGroup);
+
+    // 2. Vertical Chemical Reaction Column (Rising through roof cutaway)
+    const columnMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 18, 20), machineGreen);
+    columnMesh.position.set(12, 9, -8);
+    columnMesh.castShadow = true;
+    factoryGroup.add(columnMesh);
+    this.obstacleColliders.push(columnMesh);
+
+    // Flange rings on distillation column
+    for (let fl = 2; fl <= 16; fl += 3.5) {
+      const flange = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 1.85, 0.25, 16), steelGalv);
+      flange.position.set(12, fl, -8);
+      factoryGroup.add(flange);
+    }
+
+    // 3. Elevated Mezzanine Catwalk & Maintenance Walkway with Steel Stairs
+    const catwalkGroup = new THREE.Group();
+    catwalkGroup.position.set(4, 6.5, -10);
+
+    const catDeck = new THREE.Mesh(new THREE.BoxGeometry(26, 0.35, 3.5), steelGalv);
+    catDeck.receiveShadow = true;
+    catwalkGroup.add(catDeck);
+    this.obstacleColliders.push(catDeck);
+
+    // Yellow Safety Railings along Catwalk
+    const railFront = new THREE.Mesh(new THREE.BoxGeometry(26, 0.9, 0.1), safetyYellow);
+    railFront.position.set(0, 0.6, 1.7);
+    catwalkGroup.add(railFront);
+
+    const railBack = new THREE.Mesh(new THREE.BoxGeometry(26, 0.9, 0.1), safetyYellow);
+    railBack.position.set(0, 0.6, -1.7);
+    catwalkGroup.add(railBack);
+
+    // Catwalk support pillars
+    [-10, 0, 10].forEach(cx => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 6.5, 8), steelDark);
+      leg.position.set(cx, -3.25, 1.5);
+      catwalkGroup.add(leg);
+      this.obstacleColliders.push(leg);
+    });
+
+    // Catwalk staircase (partially buckled)
+    const stairLen = Math.hypot(6.5, 4.5);
+    const stairs = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.25, stairLen), steelGalv);
+    stairs.position.set(-13, -3.25, 0);
+    stairs.rotation.x = Math.atan2(4.5, 6.5);
+    catwalkGroup.add(stairs);
+    this.obstacleColliders.push(stairs);
+
+    factoryGroup.add(catwalkGroup);
+
+    // 4. Motor Control Center (MCC) & Electrical Switchgear Cabinets
+    const mccBank = new THREE.Mesh(new THREE.BoxGeometry(9.0, 2.8, 1.6), darkFactory);
+    mccBank.position.set(11, 1.4, 4);
+    factoryGroup.add(mccBank);
+    this.obstacleColliders.push(mccBank);
+
+    // Fallen cable tray fallen on floor across switchgear
+    const fallenTray = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.2, 1.4), steelGalv);
+    fallenTray.position.set(10.5, 0.7, 4.5);
+    fallenTray.rotation.set(0.25, 0.2, -0.3);
+    factoryGroup.add(fallenTray);
+    this.obstacleColliders.push(fallenTray);
+
+    // 5. Shift Supervisor Control Room (Open Cutaway Mezzanine Office)
+    // Modeled with open roof, shattered observation window, and terminal consoles for UAV sightlines
+    const ctrlRoom = new THREE.Group();
+    ctrlRoom.position.set(-15, 6.5, -10);
+
+    // Office floor slab
+    const ctrlFloor = new THREE.Mesh(new THREE.BoxGeometry(8.0, 0.35, 6.0), lightConcrete);
+    ctrlFloor.position.y = 0.18;
+    ctrlRoom.add(ctrlFloor);
+    this.obstacleColliders.push(ctrlFloor);
+
+    // Back & side enclosure walls
+    const ctrlBack = new THREE.Mesh(new THREE.BoxGeometry(8.0, 3.8, 0.25), matWallWhite);
+    ctrlBack.position.set(0, 1.9, -2.9);
+    ctrlRoom.add(ctrlBack);
+    this.obstacleColliders.push(ctrlBack);
+
+    const ctrlWest = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.8, 6.0), matWallWhite);
+    ctrlWest.position.set(-3.9, 1.9, 0);
+    ctrlRoom.add(ctrlWest);
+
+    // Front observation wall: lower half-wall with shattered window apertures
+    const ctrlFrontHalf = new THREE.Mesh(new THREE.BoxGeometry(8.0, 1.1, 0.25), matWallWhite);
+    ctrlFrontHalf.position.set(0, 0.55, 2.9);
+    ctrlRoom.add(ctrlFrontHalf);
+
+    // Window frame posts
+    [-2.6, 0, 2.6].forEach(wx => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.4, 0.25), steelDark);
+      post.position.set(wx, 2.3, 2.9);
+      ctrlRoom.add(post);
+    });
+
+    // Control room desk console
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.85, 1.2), steelDark);
+    desk.position.set(0, 0.6, 1.2);
+    ctrlRoom.add(desk);
+
+    // Glowing terminal monitors
+    [-1.2, 0, 1.2].forEach(tx => {
+      const mon = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.55, 0.08), new THREE.MeshBasicMaterial({ color: 0x00f0ff }));
+      mon.position.set(tx, 1.35, 1.2);
+      ctrlRoom.add(mon);
+    });
+
+    factoryGroup.add(ctrlRoom);
+
+    // 6. Blocked West Emergency Fire Exit (Sheltering Survivor SURV-GAS-12)
+    const fireExitGroup = new THREE.Group();
+    fireExitGroup.position.set(-21.4, 0, -9);
+
+    const exitDoorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.35, 3.6, 2.4), steelDark);
+    exitDoorFrame.position.set(0, 1.8, 0);
+    fireExitGroup.add(exitDoorFrame);
+
+    // Fallen concrete beam/lintel blocking door
+    const exitBlocker = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.6, 1.6), concreteWall);
+    exitBlocker.position.set(0.6, 1.3, 0.2);
+    exitBlocker.rotation.set(0.35, 0.1, 0.2);
+    fireExitGroup.add(exitBlocker);
+    this.obstacleColliders.push(exitBlocker);
+
+    // Illuminated Emergency EXIT Sign above door
+    const exitSign = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 0.9), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+    exitSign.position.set(0.2, 3.7, 0);
+    fireExitGroup.add(exitSign);
+
+    factoryGroup.add(fireExitGroup);
+
+    // 7. Pumps, Compressors & Floor Debris
+    [-2, 6].forEach(px => {
+      const pump = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 1.8), machineBlue);
+      pump.position.set(px, 0.8, -12);
+      factoryGroup.add(pump);
+      this.obstacleColliders.push(pump);
+    });
+
+    // Scattered structural metal debris on factory floor (placed safely away from victims)
+    const factoryDebrisCoords = [
+      { x: -14, z: 2 }, { x: -8, z: 8 }, { x: 4, z: 10 }, { x: 14, z: 10 },
+      { x: -18, z: 6 }, { x: 18, z: -2 }, { x: -12, z: -6 }, { x: 14, z: -8 }
+    ];
+    factoryDebrisCoords.forEach(c => {
+      const debris = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.45, 1.6), steelGalv);
+      debris.position.set(c.x, 0.4, c.z);
+      debris.rotation.set(0.2, 0.4, 0.15);
+      factoryGroup.add(debris);
+      this.obstacleColliders.push(debris);
+    });
+
+    this.environmentGroup.add(factoryGroup);
+
+    // -------------------------------------------------------------------------
+    // 3. EXTERIOR CHEMICAL STORAGE TANK FARM (SPHERES, SILOS & BUND WALL)
+    // Located West (X: -52 to -18, Z: -8 to +42)
+    // -------------------------------------------------------------------------
+
+    // A. Concrete Containment Bund Dike Wall (enclosing tank farm)
+    const bundWallMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 });
+    // North wall
+    const bWallN = new THREE.Mesh(new THREE.BoxGeometry(36, 1.2, 0.6), bundWallMat);
+    bWallN.position.set(-36, 0.6, -8);
+    this.environmentGroup.add(bWallN);
+    this.obstacleColliders.push(bWallN);
+
+    // South wall
+    const bWallS = new THREE.Mesh(new THREE.BoxGeometry(36, 1.2, 0.6), bundWallMat);
+    bWallS.position.set(-36, 0.6, 42);
+    this.environmentGroup.add(bWallS);
+    this.obstacleColliders.push(bWallS);
+
+    // West wall
+    const bWallW = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 50), bundWallMat);
+    bWallW.position.set(-54, 0.6, 17);
+    this.environmentGroup.add(bWallW);
+    this.obstacleColliders.push(bWallW);
+
+    // B. Pressurized Horton Spherical Chemical Vessel (Ammonia / LPG)
+    // Ruptured sphere with explosion crater at (-38, 0, 8)
     const sphereGroup = new THREE.Group();
-    sphereGroup.position.set(-22, 0, 15);
-    const sphereLegs = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 5), steelMat);
-    sphereLegs.position.y = 2.5;
-    sphereGroup.add(sphereLegs);
+    sphereGroup.position.set(-38, 0, 8);
 
-    const chemSphere = new THREE.Mesh(new THREE.SphereGeometry(6, 24, 20), rustMat);
-    chemSphere.position.y = 7.5;
+    // 8 Tubular Steel Support Columns
+    for (let c = 0; c < 8; c++) {
+      const ang = (c / 8) * Math.PI * 2;
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.28, 6.2, 8), steelGalv);
+      leg.position.set(Math.cos(ang) * 4.8, 3.1, Math.sin(ang) * 4.8);
+      sphereGroup.add(leg);
+      this.obstacleColliders.push(leg);
+    }
+
+    // 12-Meter Diameter Spherical Pressure Tank
+    const chemSphere = new THREE.Mesh(new THREE.SphereGeometry(6.2, 28, 24), tankWhiteMat);
+    chemSphere.position.y = 8.5;
     chemSphere.castShadow = true;
     sphereGroup.add(chemSphere);
     this.obstacleColliders.push(chemSphere);
+
+    // Scorch blast mark on south face of sphere
+    const sphereBurn = new THREE.Mesh(new THREE.SphereGeometry(6.25, 16, 16, 0, Math.PI * 0.8, Math.PI * 0.3, Math.PI * 0.5), scorchedMat);
+    sphereBurn.position.y = 8.5;
+    sphereGroup.add(sphereBurn);
+
+    // Top safety relief valve & vent stack
+    const topRelief = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.5, 8), pipeRedFire);
+    topRelief.position.set(0, 15.8, 0);
+    sphereGroup.add(topRelief);
+
     this.environmentGroup.add(sphereGroup);
 
-    // Chemical Cylindrical Fractionating Silos
-    [18, 30].forEach((x, idx) => {
-      const silo = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 22 + idx * 4, 24), steelMat);
-      silo.position.set(x, (22 + idx * 4) / 2, 18);
+    // C. 3 Cylindrical Chemical Fractionating Silos / Towers
+    const siloConfigs = [
+      { x: -44, z: 26, h: 22, d: 4.8, mat: tankSilverMat },
+      { x: -32, z: 28, h: 26, d: 5.2, mat: tankSilverMat },
+      { x: -24, z: 32, h: 18, d: 4.2, mat: rustMat }
+    ];
+    siloConfigs.forEach(sc => {
+      const silo = new THREE.Mesh(new THREE.CylinderGeometry(sc.d / 2, sc.d / 2, sc.h, 24), sc.mat);
+      silo.position.set(sc.x, sc.h / 2, sc.z);
       silo.castShadow = true;
       this.environmentGroup.add(silo);
       this.obstacleColliders.push(silo);
 
-      // Elevated spiral ladder cage
-      const cage = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 22 + idx * 4, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0x64748b, wireframe: true }));
-      cage.position.set(x, (22 + idx * 4) / 2, 18);
+      // Elevated spiral ladder cage around silo
+      const cage = new THREE.Mesh(
+        new THREE.CylinderGeometry(sc.d / 2 + 0.45, sc.d / 2 + 0.45, sc.h, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0x64748b, wireframe: true })
+      );
+      cage.position.set(sc.x, sc.h / 2, sc.z);
       this.environmentGroup.add(cage);
+
+      // Intermediate maintenance platform on Silo 2 (Sheltering Survivor SURV-GAS-03)
+      if (sc.x === -32) {
+        const plat = new THREE.Mesh(new THREE.CylinderGeometry(sc.d / 2 + 0.85, sc.d / 2 + 0.85, 0.25, 18), steelGalv);
+        plat.position.set(sc.x, 12.5, sc.z);
+        this.environmentGroup.add(plat);
+        this.obstacleColliders.push(plat);
+
+        const platRail = new THREE.Mesh(new THREE.CylinderGeometry(sc.d / 2 + 0.85, sc.d / 2 + 0.85, 0.9, 18, 1, true), new THREE.MeshBasicMaterial({ color: 0xeab308, wireframe: true }));
+        platRail.position.set(sc.x, 12.95, sc.z);
+        this.environmentGroup.add(platRail);
+      }
+
+      // Top maintenance dome & railing
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(sc.d / 2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), sc.mat);
+      dome.position.set(sc.x, sc.h, sc.z);
+      this.environmentGroup.add(dome);
     });
 
-    // Elevated Industrial Pipe Racks linking tanks to factory
+    // D. 2 Horizontal Cylindrical Bullet Pressure Vessels
+    [-2, 18].forEach((bz, idx) => {
+      const bulletGroup = new THREE.Group();
+      bulletGroup.position.set(-24, 2.2, bz);
+
+      const bullet = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 8.5, 20), tankWhiteMat);
+      bullet.rotation.z = Math.PI / 2;
+      bullet.castShadow = true;
+      bulletGroup.add(bullet);
+      this.obstacleColliders.push(bullet);
+
+      // Hemispherical end caps
+      const capL = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), tankWhiteMat);
+      capL.rotation.z = -Math.PI / 2;
+      capL.position.set(-4.25, 0, 0);
+      bulletGroup.add(capL);
+
+      const capR = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), tankWhiteMat);
+      capR.rotation.z = Math.PI / 2;
+      capR.position.set(4.25, 0, 0);
+      bulletGroup.add(capR);
+
+      // Concrete mounting pedestals
+      [-2.5, 2.5].forEach(px => {
+        const ped = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.4, 3.6), concreteWall);
+        ped.position.set(px, -1.4, 0);
+        bulletGroup.add(ped);
+        this.obstacleColliders.push(ped);
+      });
+
+      this.environmentGroup.add(bulletGroup);
+    });
+
+    // E. Ruptured Ammonia Transfer Manifold & Ruptured Flange (-26, 2.2, 10)
+    // Primary leak source issuing dense pale yellowish-green toxic plume (HAZ-GAS-AMMONIA)
+    const manifoldGroup = new THREE.Group();
+    manifoldGroup.position.set(-26, 0, 10);
+
+    const maniBase = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 1.8), machineryMat);
+    maniBase.position.y = 0.7;
+    manifoldGroup.add(maniBase);
+    this.obstacleColliders.push(maniBase);
+
+    // Ruptured pipe flange with sheared bolts
+    const rupFlange = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.8, 12), pipeYellowGas);
+    rupFlange.position.set(0, 1.8, 0);
+    rupFlange.rotation.z = Math.PI / 4;
+    manifoldGroup.add(rupFlange);
+
+    // Dial pressure gauge
+    const pGauge = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.1, 10), new THREE.MeshBasicMaterial({ color: 0xf1f5f9 }));
+    pGauge.position.set(-0.5, 1.7, 0);
+    pGauge.rotation.x = Math.PI / 2;
+    manifoldGroup.add(pGauge);
+
+    this.environmentGroup.add(manifoldGroup);
+
+    // -------------------------------------------------------------------------
+    // 4. OVERHEAD INDUSTRIAL PIPE BRIDGES & RACKS
+    // Spanning from Tank Farm to Main Production Hall & Loading Dock
+    // -------------------------------------------------------------------------
     const pipeRackGroup = new THREE.Group();
-    for (let p = 0; p < 4; p++) {
-      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 48), brightYellow);
-      pipe.rotation.z = Math.PI / 2;
-      pipe.position.set(2, 5.5 + p * 0.8, 16);
-      pipeRackGroup.add(pipe);
-    }
+
+    // Steel portal frames supporting East-West pipe rack at 6m elevation
+    [-28, -18, -8, 2, 12].forEach(fx => {
+      const colL = new THREE.Mesh(new THREE.BoxGeometry(0.35, 6.5, 0.35), steelDark);
+      colL.position.set(fx, 3.25, 12);
+      pipeRackGroup.add(colL);
+      this.obstacleColliders.push(colL);
+
+      const colR = new THREE.Mesh(new THREE.BoxGeometry(0.35, 6.5, 0.35), steelDark);
+      colR.position.set(fx, 3.25, 16);
+      pipeRackGroup.add(colR);
+      this.obstacleColliders.push(colR);
+
+      const xBeam = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.35, 4.4), steelDark);
+      xBeam.position.set(fx, 6.2, 14);
+      pipeRackGroup.add(xBeam);
+      this.obstacleColliders.push(xBeam);
+    });
+
+    // 4-Tier East-West Pipeline Run (Yellow Gas, Red Fire, Silver Steam, Blue Water)
+    const pipeMats = [pipeYellowGas, pipeRedFire, pipeSilverSteam, pipeBlueWater];
+    pipeMats.forEach((pMat, pIdx) => {
+      const pY = 5.8 + (pIdx % 2) * 0.7;
+      const pZ = 12.8 + Math.floor(pIdx / 2) * 1.6;
+      const pipeRun = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 46, 12), pMat);
+      pipeRun.rotation.z = Math.PI / 2;
+      pipeRun.position.set(-8, pY, pZ);
+      pipeRackGroup.add(pipeRun);
+      this.obstacleColliders.push(pipeRun);
+    });
+
+    // North-South connecting bridge from Tank Farm (Z: 14) to Factory Hall (Z: -10) along X: -10
+    [6, -2].forEach(fz => {
+      const colB = new THREE.Mesh(new THREE.BoxGeometry(0.35, 6.5, 0.35), steelDark);
+      colB.position.set(-10, 3.25, fz);
+      pipeRackGroup.add(colB);
+      this.obstacleColliders.push(colB);
+    });
+
+    // Connecting high-pressure gas pipe run along North-South bridge
+    const nsPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 14, 12), pipeYellowGas);
+    nsPipe.position.set(-10, 6.2, 4);
+    pipeRackGroup.add(nsPipe);
+    this.obstacleColliders.push(nsPipe);
+
+    // Severed & Dangling Pipeline Rupture Section at (-10, 6.2, -6)
+    // Secondary leak source issuing pressurized high-velocity white gas jet (HAZ-GAS-PIPE-JET)
+    const severedPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 3.5, 12), pipeYellowGas);
+    severedPipe.position.set(-10, 5.2, -6);
+    severedPipe.rotation.set(0.45, 0.2, 0.6);
+    pipeRackGroup.add(severedPipe);
+    this.obstacleColliders.push(severedPipe);
+
     this.environmentGroup.add(pipeRackGroup);
 
-    // 2. Main Factory Complex with INTERIOR ACCESSIBILITY & BREACHED WALLS
-    // Drone can literally look and fly INSIDE the factory!
-    const factoryGroup = new THREE.Group();
-    factoryGroup.position.set(0, 0, -22);
+    // -------------------------------------------------------------------------
+    // 5. CHEMICAL LOADING DOCK & TRUCK TRANSFER BAY (EAST, X: 18 to 48, Z: -5 to +35)
+    // -------------------------------------------------------------------------
+    const loadingGroup = new THREE.Group();
+    loadingGroup.position.set(30, 0, 14);
 
-    // Factory Concrete Floor
-    const factoryFloor = new THREE.Mesh(new THREE.BoxGeometry(36, 0.4, 26), darkFactory);
-    factoryFloor.position.y = 0.2;
-    factoryGroup.add(factoryFloor);
-    this.obstacleColliders.push(factoryFloor);
+    // Elevated Concrete Loading Platform
+    const dockPlatform = new THREE.Mesh(new THREE.BoxGeometry(16, 1.2, 22), concreteYard);
+    dockPlatform.position.y = 0.6;
+    dockPlatform.receiveShadow = true;
+    loadingGroup.add(dockPlatform);
+    this.obstacleColliders.push(dockPlatform);
 
-    // Back Solid Wall
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(36, 12, 1.2), darkFactory);
-    backWall.position.set(0, 6, -13);
-    factoryGroup.add(backWall);
-    this.obstacleColliders.push(backWall);
+    // Yellow/Black Hazard Border along Dock Edge
+    const hazardEdge = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 22), safetyYellow);
+    hazardEdge.position.set(-8.0, 1.22, 0);
+    loadingGroup.add(hazardEdge);
 
-    // Left Wall
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1.2, 12, 26), darkFactory);
-    leftWall.position.set(-18, 6, 0);
-    factoryGroup.add(leftWall);
-    this.obstacleColliders.push(leftWall);
+    // Corrugated Overhead Loading Canopy
+    const dockRoof = new THREE.Mesh(new THREE.BoxGeometry(18, 0.4, 24), corrugatedBlue);
+    dockRoof.position.set(0, 6.2, 0);
+    loadingGroup.add(dockRoof);
+    this.obstacleColliders.push(dockRoof);
 
-    // Right Wall (Partially Breached)
-    const rightWall1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 12, 12), darkFactory);
-    rightWall1.position.set(18, 6, -7);
-    factoryGroup.add(rightWall1);
-    this.obstacleColliders.push(rightWall1);
-
-    // FRONT BREACHED WALL (Huge 14-meter opening created by explosion blast!)
-    const frontWallLeft = new THREE.Mesh(new THREE.BoxGeometry(8, 12, 1.2), darkFactory);
-    frontWallLeft.position.set(-14, 6, 13);
-    factoryGroup.add(frontWallLeft);
-    this.obstacleColliders.push(frontWallLeft);
-
-    const frontWallRight = new THREE.Mesh(new THREE.BoxGeometry(8, 12, 1.2), darkFactory);
-    frontWallRight.position.set(14, 6, 13);
-    factoryGroup.add(frontWallRight);
-    this.obstacleColliders.push(frontWallRight);
-
-    // Factory Roof with Collapsed Trusses (Open skylight for aerial UAV surveillance)
-    const roofTruss1 = new THREE.Mesh(new THREE.BoxGeometry(36, 0.8, 10), darkFactory);
-    roofTruss1.position.set(0, 12, -8);
-    factoryGroup.add(roofTruss1);
-    this.obstacleColliders.push(roofTruss1);
-
-    // Collapsed Tilted Roof Section hanging down into interior
-    const tiltedTruss = new THREE.Mesh(new THREE.BoxGeometry(16, 0.6, 14), darkFactory);
-    tiltedTruss.position.set(-4, 7, 2);
-    tiltedTruss.rotation.set(0.4, 0.1, -0.35);
-    factoryGroup.add(tiltedTruss);
-    this.obstacleColliders.push(tiltedTruss);
-
-    // 3. FACTORY INTERIOR DETAILS: Heavy Machinery, Broken Boilers, Catwalks
-    // Industrial Boiler (Central Machine)
-    const boiler = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 6, 16), machineryMat);
-    boiler.rotation.z = Math.PI / 2;
-    boiler.position.set(-6, 3, -4);
-    boiler.castShadow = true;
-    factoryGroup.add(boiler);
-    this.obstacleColliders.push(boiler);
-
-    // Electrical Switchgear & Generator Cabinets
-    const gen = new THREE.Mesh(new THREE.BoxGeometry(4, 2.8, 2.5), machineryMat);
-    gen.position.set(8, 1.4, -8);
-    factoryGroup.add(gen);
-    this.obstacleColliders.push(gen);
-
-    // Elevated Mezzanine Catwalk inside Factory
-    const catwalk = new THREE.Mesh(new THREE.BoxGeometry(18, 0.4, 3.5), steelMat);
-    catwalk.position.set(4, 6.5, -9);
-    factoryGroup.add(catwalk);
-    this.obstacleColliders.push(catwalk);
-
-    // Fallen cable trays & interior debris piles
-    for (let c = 0; c < 8; c++) {
-      const debris = new THREE.Mesh(new THREE.BoxGeometry(1.5 + Math.random() * 2, 0.6 + Math.random(), 1.5 + Math.random() * 2), darkFactory);
-      debris.position.set((Math.random() - 0.5) * 24, 0.5, (Math.random() - 0.5) * 16);
-      debris.rotation.y = Math.random() * Math.PI;
-      factoryGroup.add(debris);
-      this.obstacleColliders.push(debris);
-    }
-    this.environmentGroup.add(factoryGroup);
-
-    // 4. Massive Ruptured Pipeline Manifold (Hazard Origin)
-    const rupturedPipeGroup = new THREE.Group();
-    rupturedPipeGroup.position.set(-16, 0, 12);
-    const brokenFlange = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 3, 16), rustMat);
-    brokenFlange.rotation.z = Math.PI / 3;
-    brokenFlange.position.y = 1.5;
-    rupturedPipeGroup.add(brokenFlange);
-    this.environmentGroup.add(rupturedPipeGroup);
-
-    // 5. Active Chemical Fire & Massive Toxic Gas Plume
-    this.addFireHazard({
-      id: 'HAZ-FIRE-IND',
-      position: new THREE.Vector3(-14, 0.6, 12),
-      intensity: 2.2,
-      radius: 9
+    // Canopy steel pillars
+    [-8, 8].forEach(px => {
+      [ -10, 10 ].forEach(pz => {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.6, 0.35), steelDark);
+        pillar.position.set(px, 3.4, pz);
+        loadingGroup.add(pillar);
+        this.obstacleColliders.push(pillar);
+      });
     });
 
+    // Parked Chemical Tanker Truck (Cab + Cylindrical Trailer Tank)
+    const truckGroup = new THREE.Group();
+    truckGroup.position.set(-12, 0, 2);
+
+    // Truck Cab
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(3.0, 2.8, 3.2), safetyOrange);
+    cab.position.set(0, 1.8, 6.5);
+    truckGroup.add(cab);
+    this.obstacleColliders.push(cab);
+
+    // Tanker Trailer Tank (Cylinder in Silver)
+    const trailerTank = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 10, 20), tankSilverMat);
+    trailerTank.rotation.x = Math.PI / 2;
+    trailerTank.position.set(0, 2.4, -1.0);
+    trailerTank.castShadow = true;
+    truckGroup.add(trailerTank);
+    this.obstacleColliders.push(trailerTank);
+
+    loadingGroup.add(truckGroup);
+
+    // Stacks of 200L Chemical Storage Drums on Wooden Pallets
+    const drumMatBlue = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5, roughness: 0.35 });
+    const drumMatYellow = new THREE.MeshStandardMaterial({ color: 0xeab308, metalness: 0.5, roughness: 0.35 });
+    const drumCoords = [
+      { x: 3, z: -6, mat: drumMatBlue },
+      { x: 5, z: -6, mat: drumMatBlue },
+      { x: 3, z: -4, mat: drumMatYellow },
+      { x: 4, z: 6, mat: drumMatYellow },
+      { x: 6, z: 6, mat: drumMatBlue }
+    ];
+    drumCoords.forEach(dc => {
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.2, 14), dc.mat);
+      drum.position.set(dc.x, 1.8, dc.z);
+      loadingGroup.add(drum);
+      this.obstacleColliders.push(drum);
+    });
+
+    this.environmentGroup.add(loadingGroup);
+
+    // -------------------------------------------------------------------------
+    // 6. ELECTRICAL SUBSTATION & TRANSFORMER YARD (SOUTHEAST, X: 20 to 45, Z: -42 to -18)
+    // -------------------------------------------------------------------------
+    const subGroup = new THREE.Group();
+    subGroup.position.set(30, 0, -30);
+
+    // 2 Step-Down Transformers with Radiator Fins
+    [-4, 4].forEach((tx, idx) => {
+      const transBody = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.2, 2.8), machineryMat);
+      transBody.position.set(tx, 1.6, 0);
+      transBody.castShadow = true;
+      subGroup.add(transBody);
+      this.obstacleColliders.push(transBody);
+
+      // Ceramic high-voltage insulators on top
+      for (let ins = -1.0; ins <= 1.0; ins += 1.0) {
+        const insulator = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1.2, 8), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+        insulator.position.set(tx + ins, 3.8, 0);
+        subGroup.add(insulator);
+      }
+
+      // Fire scorch marks on transformer #1
+      if (idx === 0) {
+        const tScorch = new THREE.Mesh(new THREE.BoxGeometry(3.65, 2.0, 2.85), scorchedMat);
+        tScorch.position.set(tx, 1.4, 0);
+        subGroup.add(tScorch);
+      }
+    });
+
+    // Substation Perimeter Security Fence (Wireframe boundary)
+    const fenceMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8, wireframe: true });
+    const subFence = new THREE.Mesh(new THREE.BoxGeometry(18, 2.8, 16), fenceMat);
+    subFence.position.y = 1.4;
+    subGroup.add(subFence);
+    this.obstacleColliders.push(subFence);
+
+    this.environmentGroup.add(subGroup);
+
+    // -------------------------------------------------------------------------
+    // 7. INDUSTRIAL CHIMNEYS & EXHAUST STACKS
+    // -------------------------------------------------------------------------
+    // 30m Tall Concrete Emissions Stack with Red/White Aviation Warning Bands
+    const chimneyGroup = new THREE.Group();
+    chimneyGroup.position.set(34, 0, -38);
+
+    const chimneyStack = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.8, 30, 24), concreteWall);
+    chimneyStack.position.y = 15;
+    chimneyStack.castShadow = true;
+    chimneyGroup.add(chimneyStack);
+    this.obstacleColliders.push(chimneyStack);
+
+    // Aviation Red Warning Stripes near apex
+    [24, 27].forEach(sy => {
+      const redBand = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.85, 1.4, 24), pipeRedFire);
+      redBand.position.y = sy;
+      chimneyGroup.add(redBand);
+    });
+
+    this.environmentGroup.add(chimneyGroup);
+
+    // -------------------------------------------------------------------------
+    // 8. SECURITY GATEHOUSE, ENTRANCE BARRIER & MUSTER POINT (SOUTH)
+    // -------------------------------------------------------------------------
+    const gateGroup = new THREE.Group();
+    gateGroup.position.set(24, 0, 38);
+
+    const guardhouse = new THREE.Mesh(new THREE.BoxGeometry(4.8, 3.2, 4.0), matWallWhite);
+    guardhouse.position.y = 1.6;
+    gateGroup.add(guardhouse);
+    this.obstacleColliders.push(guardhouse);
+
+    // Red/White Barrier Arm across road
+    const barrier = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 6.0), pipeRedFire);
+    barrier.rotation.z = Math.PI / 2;
+    barrier.position.set(-4.0, 1.0, 0);
+    gateGroup.add(barrier);
+
+    // Emergency Assembly Muster Point Signboard
+    const musterSign = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 0.1), machineGreen);
+    musterSign.position.set(4.0, 2.2, 0);
+    gateGroup.add(musterSign);
+
+    this.environmentGroup.add(gateGroup);
+
+    // -------------------------------------------------------------------------
+    // 9. VISIBLE MULTI-POINT GAS LEAKAGE, CHEMICAL PLUMES & ATMOSPHERE
+    // Semi-transparent pale yellowish-green & white gas effects at identifiable points
+    // -------------------------------------------------------------------------
+
+    // Leak 1: PRIMARY LEAK - Ruptured ammonia manifold flange at Tank Farm (-26, 2.2, 10)
     this.addGasLeakSource({
       id: 'HAZ-GAS-AMMONIA',
       type: 'Anhydrous Ammonia (NH3) & VOCs',
-      position: new THREE.Vector3(-16, 2.0, 12),
+      position: new THREE.Vector3(-26, 2.2, 10),
       peakConcentrationPPM: 1480,
-      radius: 30,
-      severity: 'LETHAL TOXIC PLUME'
+      radius: 34,
+      severity: 'LETHAL TOXIC PLUME',
+      color: 0xd9f99d, // Distinct pale yellowish-green ammonia plume
+      particleCount: 120,
+      particleSize: 3.2,
+      opacity: 0.48,
+      spreadX: 10,
+      spreadY: 12,
+      spreadZ: 10,
+      riseSpeed: 1.8,
+      driftSpeedX: 1.5,
+      isPrimary: true
     });
 
-    // Secondary localized methane vent near factory breach
+    // Leak 2: SECONDARY LEAK - Sheared pipeline connection on overhead pipe bridge (-10, 6.2, -6)
     this.addGasLeakSource({
-      id: 'HAZ-GAS-CH4-INT',
-      type: 'Methane (CH4) Line Leak',
-      position: new THREE.Vector3(2, 1.5, -9),
-      peakConcentrationPPM: 640,
-      radius: 14,
-      severity: 'HIGH EXPLOSIVE'
+      id: 'HAZ-GAS-PIPE-JET',
+      type: 'Pressurized Combustible Gas Jet',
+      position: new THREE.Vector3(-10, 6.2, -6),
+      peakConcentrationPPM: 780,
+      radius: 20,
+      severity: 'HIGH EXPLOSIVE HAZARD',
+      color: 0xf1f5f9, // Pressurized white/pale vapor jet
+      particleCount: 85,
+      particleSize: 2.2,
+      opacity: 0.42,
+      spreadX: 6,
+      spreadY: 8,
+      spreadZ: 6,
+      riseSpeed: 2.4,
+      driftSpeedX: 1.8,
+      isPrimary: false
     });
 
-    // 6. 5 Visible Industrial Disaster Survivors (Inside & Around Facility)
-    // Survivor 1: Chemical operator trapped in factory interior behind boiler (RED: Critical Inhalation)
+    // Leak 3: INDOOR LEAK - Leaking gas accumulating inside production hall near boiler (-6, 1.4, -27)
+    this.addGasLeakSource({
+      id: 'HAZ-GAS-INDOOR',
+      type: 'Methane (CH4) Line Leak',
+      position: new THREE.Vector3(-6, 1.4, -27),
+      peakConcentrationPPM: 640,
+      radius: 16,
+      severity: 'INDOOR FLAMMABLE ACCUMULATION',
+      color: 0xfef08a, // Soft yellowish haze
+      particleCount: 70,
+      particleSize: 2.6,
+      opacity: 0.35,
+      spreadX: 12,
+      spreadY: 7,
+      spreadZ: 10,
+      riseSpeed: 0.8,
+      driftSpeedX: 0.4,
+      isPrimary: false
+    });
+
+    // Active Chemical Fire near ruptured flange (-16, 0.6, 12)
+    this.addFireHazard({
+      id: 'HAZ-FIRE-IND',
+      type: 'Chemical & Hydrocarbon Combustion',
+      position: new THREE.Vector3(-16, 0.6, 12),
+      intensity: 2.2,
+      radius: 8
+    });
+
+    // Localized dust haze around collapsed factory roof
+    this.addDustPlume({
+      position: new THREE.Vector3(0, 4.0, -10),
+      radius: 16,
+      height: 8,
+      particleCount: 75,
+      color: 0xc8c2b4,
+      opacity: 0.24,
+      riseSpeed: 0.4,
+      driftX: 0.4
+    });
+
+    // -------------------------------------------------------------------------
+    // 10. 12 VISIBLE INDUSTRIAL DISASTER SURVIVORS (6 OUTSIDE + 6 INSIDE FACTORY)
+    // Full NDRF START triage protocol, hardhats, realistic positions & vitals
+    // -------------------------------------------------------------------------
+
+    // OUTSIDE SURVIVORS:
+    // Survivor 1: Chemical loader collapsed beside ruptured ammonia manifold in lethal toxic zone (RED: Immediate)
     this.addSurvivor({
       id: 'SURV-GAS-01',
-      name: 'Operator Trapped Behind Boiler (Interior)',
-      position: new THREE.Vector3(-7, 1.0, -25),
-      posture: 'trapped',
-      temperature: 37.3,
-      triage: 'RED',
-      vitals: 'HR: 132 bpm | Toxic Inhalation (NH3 620 ppm)',
-      gasExposure: 'LETHAL TOXIC ZONE',
-      detected: false
-    });
-
-    // Survivor 2: Technician trapped on damaged interior mezzanine catwalk (YELLOW: Urgent)
-    this.addSurvivor({
-      id: 'SURV-GAS-02',
-      name: 'Technician on Elevated Catwalk (Interior)',
-      position: new THREE.Vector3(6, 7.3, -31),
-      posture: 'waving',
-      temperature: 36.9,
-      triage: 'YELLOW',
-      vitals: 'HR: 94 bpm | Catwalk Staircase Collapsed',
-      gasExposure: 'Moderate (85 ppm)',
-      detected: false
-    });
-
-    // Survivor 3: Maintenance worker pinned under fallen cable tray in factory (RED: Immediate)
-    this.addSurvivor({
-      id: 'SURV-GAS-03',
-      name: 'Worker Pinned by Cable Tray (Interior)',
-      position: new THREE.Vector3(8, 0.8, -18),
-      posture: 'trapped',
-      temperature: 37.0,
-      triage: 'RED',
-      vitals: 'HR: 118 bpm | Thoracic Compression',
-      gasExposure: 'Elevated VOCs',
-      detected: false
-    });
-
-    // Survivor 4: Chemical loader collapsed near ruptured tank valve (RED: Toxic Hazard)
-    this.addSurvivor({
-      id: 'SURV-GAS-04',
       name: 'Loader Collapsed Near Ruptured Tank',
-      position: new THREE.Vector3(-18, 0.7, 18),
+      position: new THREE.Vector3(-25.0, 0.6, 11.0),
       posture: 'trapped',
       temperature: 37.4,
       triage: 'RED',
-      vitals: 'Unconscious | Chemical Burn Risk',
-      gasExposure: 'CRITICAL (1200+ ppm)',
+      clothingColor: 0xea580c, // Safety orange coveralls
+      hasHardhat: true,
+      hardhatColor: 0xfacc15,
+      hasReflectiveStripe: true,
+      vitals: 'Unconscious | Acute Ammonia Inhalation (1200+ ppm) | Chemical Burns',
+      gasExposure: 'LETHAL TOXIC ZONE (1400+ ppm)',
       detected: false
     });
 
-    // Survivor 5: Plant safety warden near exterior emergency muster gate (GREEN: Minor)
+    // Survivor 2: Plant safety warden at exterior muster gate guiding responders (GREEN: Minor)
     this.addSurvivor({
-      id: 'SURV-GAS-05',
+      id: 'SURV-GAS-02',
       name: 'Safety Warden at Exterior Gate',
-      position: new THREE.Vector3(26, 0.6, 2),
+      position: new THREE.Vector3(24.0, 0.6, 36.0),
       posture: 'standing',
       temperature: 36.7,
       triage: 'GREEN',
-      vitals: 'Ambulatory | Guiding Responders',
+      clothingColor: 0x16a34a, // Green safety vest
+      hasHardhat: true,
+      hardhatColor: 0xf8fafc, // White supervisor hardhat
+      hasReflectiveStripe: true,
+      vitals: 'Ambulatory | Guiding Responders | LoRa Radio Active',
       gasExposure: 'Low (18 ppm)',
       detected: false
     });
 
+    // Survivor 3: Tank farm technician stranded on elevated fractionating column ladder platform (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-GAS-03',
+      name: 'Technician on Silo Platform',
+      position: new THREE.Vector3(-30.0, 12.65, 27.5),
+      posture: 'waving',
+      temperature: 36.8,
+      triage: 'YELLOW',
+      clothingColor: 0x0284c7, // Blue coveralls
+      flagColor: 0xfacc15,
+      hasHardhat: true,
+      hardhatColor: 0xfacc15,
+      vitals: 'HR: 96 bpm | Ladder Cage Buckled | Non-ambulatory at Height',
+      gasExposure: 'Moderate (92 ppm)',
+      detected: false
+    });
+
+    // Survivor 4: Truck driver injured beside chemical tanker at loading dock (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-GAS-04',
+      name: 'Truck Driver (Loading Dock)',
+      position: new THREE.Vector3(28.0, 1.35, 14.0),
+      posture: 'sitting',
+      temperature: 36.9,
+      triage: 'YELLOW',
+      clothingColor: 0x475569, // Grey jacket
+      vitals: 'HR: 90 bpm | Blast Concussion | Minor Inhalation',
+      gasExposure: 'Moderate (45 ppm)',
+      detected: false
+    });
+
+    // Survivor 5: Utility technician trapped behind transformer substation fence (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-GAS-05',
+      name: 'Electrician (Substation Enclosure)',
+      position: new THREE.Vector3(23.2, 0.6, -28.2),
+      posture: 'trapped',
+      temperature: 37.2,
+      triage: 'RED',
+      clothingColor: 0xd97706, // Amber flame-retardant suit
+      hasHardhat: true,
+      hardhatColor: 0xfacc15,
+      vitals: 'HR: 120 bpm | Electrical Arc Burns | Locked in Enclosure',
+      gasExposure: 'Trace Smoke & Ozone',
+      detected: false
+    });
+
+    // Survivor 6: Logistics worker in open container yard signaling for help (GREEN: Minor)
+    this.addSurvivor({
+      id: 'SURV-GAS-06',
+      name: 'Logistics Clerk (Container Yard)',
+      position: new THREE.Vector3(36.0, 0.6, 32.0),
+      posture: 'waving',
+      temperature: 36.6,
+      triage: 'GREEN',
+      clothingColor: 0xf59e0b, // Yellow shirt
+      flagColor: 0xffffff,
+      vitals: 'Stable | Awaiting Evacuation Order | Clear Route Available',
+      gasExposure: 'Baseline (20 ppm)',
+      detected: false
+    });
+
+    // INSIDE FACTORY SURVIVORS:
+    // Survivor 7: Chemical operator trapped in production hall behind main boiler (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-GAS-07',
+      name: 'Operator Behind Boiler (Interior)',
+      position: new THREE.Vector3(-6.0, 0.6, -26.0),
+      posture: 'trapped',
+      temperature: 37.3,
+      triage: 'RED',
+      clothingColor: 0xe11d48, // Crimson coveralls
+      hasHardhat: true,
+      hardhatColor: 0xfacc15,
+      vitals: 'HR: 136 bpm | Lethal Gas Zone (NH3 680 ppm) | Crush Injury',
+      gasExposure: 'LETHAL TOXIC ZONE',
+      detected: false
+    });
+
+    // Survivor 8: Maintenance technician stranded on elevated mezzanine catwalk (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-GAS-08',
+      name: 'Technician on Catwalk (Interior)',
+      position: new THREE.Vector3(4.0, 6.68, -36.0),
+      posture: 'waving',
+      temperature: 36.9,
+      triage: 'YELLOW',
+      clothingColor: 0x2563eb, // Royal blue
+      flagColor: 0xef4444,
+      hasHardhat: true,
+      hardhatColor: 0xfacc15,
+      vitals: 'HR: 94 bpm | Mezzanine Staircase Collapsed | Elevated VOCs',
+      gasExposure: 'Elevated (85 ppm)',
+      detected: false
+    });
+
+    // Survivor 9: Worker pinned beneath fallen cable tray near electrical switchgear (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-GAS-09',
+      name: 'Worker Pinned by Cable Tray (Interior)',
+      position: new THREE.Vector3(10.5, 0.6, -21.5),
+      posture: 'trapped',
+      temperature: 37.0,
+      triage: 'RED',
+      clothingColor: 0x9333ea, // Purple uniform
+      vitals: 'HR: 118 bpm | Thoracic Compression | Conscious',
+      gasExposure: 'Elevated VOCs (110 ppm)',
+      detected: false
+    });
+
+    // Survivor 10: Shift supervisor inside observation control room (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-GAS-10',
+      name: 'Supervisor in Control Room (Interior)',
+      position: new THREE.Vector3(-15.0, 6.68, -35.5),
+      posture: 'standing',
+      temperature: 36.8,
+      triage: 'YELLOW',
+      clothingColor: 0xf1f5f9, // White lab coat
+      hasHardhat: true,
+      hardhatColor: 0xf8fafc,
+      vitals: 'HR: 88 bpm | Glass Lacerations | Sealed in Observation Office',
+      gasExposure: 'Low Inside Sealed Office (35 ppm)',
+      detected: false
+    });
+
+    // Survivor 11: Assembly worker sitting against machinery column near air duct (YELLOW: Urgent)
+    this.addSurvivor({
+      id: 'SURV-GAS-11',
+      name: 'Assembly Worker by Machine (Interior)',
+      position: new THREE.Vector3(0.0, 0.6, -18.0),
+      posture: 'sitting',
+      temperature: 36.7,
+      triage: 'YELLOW',
+      clothingColor: 0x15803d, // Dark green
+      vitals: 'HR: 92 bpm | Smoke Inhalation | Mild Disorientation',
+      gasExposure: 'Moderate (70 ppm)',
+      detected: false
+    });
+
+    // Survivor 12: Evacuating worker trapped near partially blocked internal fire exit (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-GAS-12',
+      name: 'Worker at Blocked Fire Exit (Interior)',
+      position: new THREE.Vector3(-20.0, 0.6, -35.0),
+      posture: 'trapped',
+      temperature: 37.1,
+      triage: 'RED',
+      clothingColor: 0xdc2626, // Red
+      hasHardhat: true,
+      hardhatColor: 0xfacc15,
+      vitals: 'HR: 124 bpm | Blocked by Collapsed Wall Slab | Low Oxygen',
+      gasExposure: 'Elevated (95 ppm)',
+      detected: false
+    });
+
     // Night Mode Factory Emergency Flashers
-    this.addEmergencyBeaconLight(new THREE.Vector3(-22, 3.5, 8));
-    this.addEmergencyBeaconLight(new THREE.Vector3(28, 2.5, 0));
+    this.addEmergencyBeaconLight(new THREE.Vector3(-38, 3.5, 8));
+    this.addEmergencyBeaconLight(new THREE.Vector3(24, 2.5, 38));
+    this.addEmergencyBeaconLight(new THREE.Vector3(30, 2.0, 14));
   }
 
   // =========================================================================
@@ -2109,6 +4291,17 @@ class DisasterEnvironment {
     torso.castShadow = true;
     group.add(torso);
 
+    // Reflective safety stripes on torso
+    if (data.hasReflectiveStripe || data.hasHardhat) {
+      const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9 });
+      const s1 = new THREE.Mesh(new THREE.CylinderGeometry(0.285, 0.28, 0.07, 10), stripeMat);
+      s1.position.y = 1.0;
+      group.add(s1);
+      const s2 = new THREE.Mesh(new THREE.CylinderGeometry(0.265, 0.26, 0.07, 10), stripeMat);
+      s2.position.y = 0.68;
+      group.add(s2);
+    }
+
     // Lifejacket / Hi-vis Vest overlay if specified
     if (data.hasLifejacket) {
       const lj = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.7, 0.55), new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.5 }));
@@ -2120,6 +4313,21 @@ class DisasterEnvironment {
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), skinMat);
     head.position.y = 1.45;
     group.add(head);
+
+    // Industrial Safety Hardhat if specified
+    if (data.hasHardhat) {
+      const hardhatMat = new THREE.MeshStandardMaterial({
+        color: data.hardhatColor || 0xfacc15,
+        roughness: 0.35,
+        metalness: 0.2
+      });
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), hardhatMat);
+      dome.position.y = 0.08;
+      head.add(dome);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 14), hardhatMat);
+      brim.position.y = 0.08;
+      head.add(brim);
+    }
 
     // Legs
     const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.8), pantsMat);
@@ -2167,6 +4375,16 @@ class DisasterEnvironment {
         paddle.position.set(0.45, 0.4, 0.4);
         group.add(paddle);
       }
+    } else if (data.posture === 'crouching') {
+      group.rotation.x = 0.25;
+      leftLeg.position.set(-0.16, 0.28, 0.15);
+      leftLeg.rotation.x = 0.8;
+      rightLeg.position.set(0.16, 0.28, 0.15);
+      rightLeg.rotation.x = 0.8;
+      leftArm.position.set(-0.32, 0.7, 0.2);
+      leftArm.rotation.x = 0.5;
+      rightArm.position.set(0.32, 0.7, 0.2);
+      rightArm.rotation.x = 0.5;
     } else {
       // Standing
       leftLeg.position.set(-0.16, 0.4, 0);
@@ -2181,7 +4399,6 @@ class DisasterEnvironment {
     group.add(rightArm);
 
     // FLIR Radiometric Thermal IR Heat Core Sphere
-    // Emits vibrant infrared heat signature (36.5°C - 37.5°C) visible through darkness/rubble
     const heatCoreGeo = new THREE.SphereGeometry(0.7, 12, 12);
     const heatCoreMat = new THREE.MeshBasicMaterial({
       color: 0xffaa00,
@@ -2205,15 +4422,16 @@ class DisasterEnvironment {
       this.environmentGroup.add(group);
     }
     data.meshGroup = group;
-    data.wavingArm = (data.posture === 'waving' || data.posture === 'sitting') ? leftArm : null;
+    data.wavingArm = (data.posture === 'waving') ? leftArm : null;
     this.obstacleColliders.push(torso);
     this.survivors.push(data);
   }
 
   // =========================================================================
-  // HAZARDS: VOLUMETRIC GAS DISPERSION & FIRE
+  // HAZARDS: VOLUMETRIC GAS DISPERSION, DUST & FIRE
   // =========================================================================
   addFireHazard(data) {
+    data.type = data.type || 'Active Fire Hazard';
     const fireGroup = new THREE.Group();
     fireGroup.position.copy(data.position);
 
@@ -2260,22 +4478,27 @@ class DisasterEnvironment {
     const gasGroup = new THREE.Group();
     gasGroup.position.copy(data.position);
 
-    const pCount = 85;
+    const pCount = data.particleCount || 85;
     const pGeo = new THREE.BufferGeometry();
     const pPos = new Float32Array(pCount * 3);
 
+    const spreadX = data.spreadX || 7;
+    const spreadY = data.spreadY || 9;
+    const spreadZ = data.spreadZ || 7;
+
     for (let i = 0; i < pCount; i++) {
-      pPos[i * 3] = (Math.random() - 0.5) * 7;
-      pPos[i * 3 + 1] = Math.random() * 9;
-      pPos[i * 3 + 2] = (Math.random() - 0.5) * 7;
+      pPos[i * 3] = (Math.random() - 0.5) * spreadX;
+      pPos[i * 3 + 1] = Math.random() * spreadY;
+      pPos[i * 3 + 2] = (Math.random() - 0.5) * spreadZ;
     }
 
     pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
     const pMat = new THREE.PointsMaterial({
-      color: data.type.includes('Ammonia') ? 0xc084fc : 0x38bdf8,
-      size: 2.0,
+      color: data.color || (data.type.includes('Ammonia') ? 0xd9f99d : (data.type.includes('Methane') ? 0xfef08a : 0x38bdf8)),
+      size: data.particleSize || 2.4,
       transparent: true,
-      opacity: 0.45
+      opacity: data.opacity || 0.44,
+      depthWrite: false
     });
 
     const gasCloud = new THREE.Points(pGeo, pMat);
@@ -2284,8 +4507,58 @@ class DisasterEnvironment {
     this.environmentGroup.add(gasGroup);
     data.gasCloud = gasCloud;
     data.particleGeo = pGeo;
-    this.gasPlumeEmitter = data;
+    data.spreadX = spreadX;
+    data.spreadY = spreadY;
+    data.spreadZ = spreadZ;
+    data.riseSpeed = data.riseSpeed || 1.6;
+    data.driftSpeedX = data.driftSpeedX || 1.4;
+    data.maxHeight = data.maxHeight || (spreadY + 1.2);
+
+    if (!this.gasPlumeEmitter || data.isPrimary) {
+      this.gasPlumeEmitter = data;
+    }
     this.hazards.push(data);
+  }
+
+  addDustPlume(data) {
+    const dustGroup = new THREE.Group();
+    dustGroup.position.copy(data.position);
+
+    const count = data.particleCount || 65;
+    const pGeo = new THREE.BufferGeometry();
+    const pPos = new Float32Array(count * 3);
+
+    const radius = data.radius || 10;
+    const height = data.height || 6;
+
+    for (let i = 0; i < count; i++) {
+      pPos[i * 3] = (Math.random() - 0.5) * radius * 2;
+      pPos[i * 3 + 1] = Math.random() * height;
+      pPos[i * 3 + 2] = (Math.random() - 0.5) * radius * 2;
+    }
+
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const pMat = new THREE.PointsMaterial({
+      color: data.color || 0xd1c7b7,
+      size: data.size || 2.8,
+      transparent: true,
+      opacity: data.opacity || 0.28,
+      depthWrite: false
+    });
+
+    const dustCloud = new THREE.Points(pGeo, pMat);
+    dustGroup.add(dustCloud);
+    this.environmentGroup.add(dustGroup);
+
+    this.particles.push({
+      cloud: dustCloud,
+      geo: pGeo,
+      count: count,
+      radius: radius,
+      height: height,
+      riseSpeed: data.riseSpeed || 0.45,
+      driftX: data.driftX || 0.3
+    });
   }
 
   addEmergencyBeaconLight(pos, alwaysActive = false) {
@@ -2349,11 +4622,9 @@ class DisasterEnvironment {
       const arr = pos.array;
       const init = this.waterInitialZ;
 
-      // Displace water vertices to create undulating swells, chop and wind ripples
       for (let i = 0; i < pos.count; i++) {
         const vx = init[i * 3];
         const vy = init[i * 3 + 1];
-        // In PlaneGeometry before rotation.x = -PI/2, local Z corresponds to World Y
         const wave = Math.sin(vx * 0.07 + time * 1.6) * 0.11 +
                      Math.cos(vy * 0.06 + time * 1.3) * 0.08 +
                      Math.sin((vx * 0.14 + vy * 0.11) + time * 2.2) * 0.04 +
@@ -2408,7 +4679,7 @@ class DisasterEnvironment {
       }
     });
 
-    // 4. Animate fire & smoke particles
+    // 5. Animate fire & smoke particles
     this.hazards.forEach(h => {
       if (h.fireParticles && h.particleGeo) {
         const pos = h.particleGeo.attributes.position.array;
@@ -2429,28 +4700,70 @@ class DisasterEnvironment {
       // Animate chemical gas plume drift & dispersion
       if (h.gasCloud && h.particleGeo) {
         const gPos = h.particleGeo.attributes.position.array;
+        const rise = h.riseSpeed || 1.6;
+        const drift = h.driftSpeedX || 1.4;
+        const maxH = h.maxHeight || 9.5;
+        const spX = h.spreadX || 2.5;
+        const spZ = h.spreadZ || 2.5;
+
         for (let j = 0; j < gPos.length; j += 3) {
-          gPos[j + 1] += 1.6 * delta; // rise
-          gPos[j] += 1.4 * delta;     // wind drift along X
-          if (gPos[j + 1] > 9.5) {
-            gPos[j + 1] = 0.5;
-            gPos[j] = (Math.random() - 0.5) * 2.5;
-            gPos[j + 2] = (Math.random() - 0.5) * 2.5;
+          gPos[j + 1] += rise * delta; // rise
+          gPos[j] += drift * delta;     // wind drift along X
+          if (gPos[j + 1] > maxH) {
+            gPos[j + 1] = 0.4;
+            gPos[j] = (Math.random() - 0.5) * spX;
+            gPos[j + 2] = (Math.random() - 0.5) * spZ;
           }
         }
         h.particleGeo.attributes.position.needsUpdate = true;
       }
     });
+
+    // 6. Animate atmospheric dust plumes
+    this.particles.forEach(p => {
+      if (p.geo) {
+        const arr = p.geo.attributes.position.array;
+        for (let j = 0; j < p.count; j++) {
+          arr[j * 3 + 1] += p.riseSpeed * delta;
+          arr[j * 3] += p.driftX * delta;
+          if (arr[j * 3 + 1] > p.height) {
+            arr[j * 3 + 1] = 0.2;
+            arr[j * 3] = (Math.random() - 0.5) * p.radius * 2;
+            arr[j * 3 + 2] = (Math.random() - 0.5) * p.radius * 2;
+          }
+        }
+        p.geo.attributes.position.needsUpdate = true;
+      }
+    });
   }
 
   getGasConcentrationAt(pos) {
-    if (!this.gasPlumeEmitter) return 15; // Ambient baseline
-    const dist = pos.distanceTo(this.gasPlumeEmitter.position);
-    if (dist > this.gasPlumeEmitter.radius) return 15;
-    
-    // Gaussian dispersion gradient model
-    const factor = Math.exp(-Math.pow(dist / (this.gasPlumeEmitter.radius * 0.45), 2));
-    return Math.round(15 + factor * this.gasPlumeEmitter.peakConcentrationPPM);
+    let maxPpm = 15;
+    let closestEmitter = null;
+    let minDist = Infinity;
+
+    this.hazards.forEach(h => {
+      if (h.peakConcentrationPPM) {
+        const dist = pos.distanceTo(h.position);
+        if (dist <= h.radius) {
+          const factor = Math.exp(-Math.pow(dist / (h.radius * 0.45), 2));
+          const ppm = Math.round(15 + factor * h.peakConcentrationPPM);
+          if (ppm > maxPpm) {
+            maxPpm = ppm;
+          }
+        }
+        if (dist < minDist) {
+          minDist = dist;
+          closestEmitter = h;
+        }
+      }
+    });
+
+    if (closestEmitter) {
+      this.gasPlumeEmitter = closestEmitter;
+    }
+
+    return maxPpm;
   }
 }
 

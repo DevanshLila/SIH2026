@@ -268,26 +268,35 @@ class SensorFusionEngine {
   updateVisionDetections() {
     this.activeDetections = [];
     const dronePos = this.drone.group.position;
-    const detectionMaxDistance = 65;
+    const isEarthquake = (this.environment.currentScenario === 'earthquake');
 
-    // 1. Evaluate All Survivors in Active Scenario
+    // 1. Evaluate Survivors in Active Scenario
     this.environment.survivors.forEach(s => {
-      const dist = dronePos.distanceTo(s.position);
-      if (dist < detectionMaxDistance) {
+      const horizDist = Math.hypot(dronePos.x - s.position.x, dronePos.z - s.position.z);
+      const droneDist = dronePos.distanceTo(s.position);
+      
+      // Real SAR UAV sensor footprint: optical & thermal payload downward scan cone
+      const scanRadius = Math.max(26, dronePos.y * 1.55);
+      if (!s.detected && (horizDist <= scanRadius || droneDist <= 28)) {
+        s.detected = true;
+      }
+
+      // If survivor is detected and within active camera view, render tactical AR reticle
+      if (s.detected) {
         const screenPos = this.toScreenPosition(s.position);
         if (screenPos.visible) {
-          s.detected = true;
-          const conf = Math.min(99.6, (91 + (1 - dist / detectionMaxDistance) * 8.5)).toFixed(1);
+          const camDist = this.camera.position.distanceTo(s.position);
+          const conf = Math.min(99.4, (92 + (1 - Math.min(1, camDist / 90)) * 7.4)).toFixed(1);
           
           this.activeDetections.push({
             id: s.id,
             type: 'survivor',
-            label: `SURVIVOR [${s.triage}] ${conf}%`,
-            sublabel: `FLIR: ${s.temperature}°C | ${s.name}`,
+            label: `SURVIVOR [${s.triage}]`,
+            sublabel: `${conf}% | ${s.temperature}°C`,
             x: screenPos.x,
             y: screenPos.y,
-            width: Math.max(50, 1200 / dist),
-            height: Math.max(70, 1600 / dist),
+            width: Math.max(36, Math.min(70, 800 / camDist)),
+            height: Math.max(46, Math.min(84, 1050 / camDist)),
             triage: s.triage,
             data: s
           });
@@ -295,12 +304,13 @@ class SensorFusionEngine {
       }
     });
 
-    // 2. Evaluate Hazards (Fire & Gas)
+    // 2. Evaluate Hazards (Fire & Gas in Chemical/Flood Scenarios)
     this.environment.hazards.forEach(h => {
       const dist = dronePos.distanceTo(h.position);
-      if (dist < detectionMaxDistance) {
+      if (dist < 65) {
         const screenPos = this.toScreenPosition(h.position);
         if (screenPos.visible) {
+          const camDist = this.camera.position.distanceTo(h.position);
           if (h.type) {
             // Gas hazard
             this.activeDetections.push({
@@ -310,8 +320,8 @@ class SensorFusionEngine {
               sublabel: `${this.gasReading.ppm} PPM | ${h.severity}`,
               x: screenPos.x,
               y: screenPos.y,
-              width: Math.max(75, 1700 / dist),
-              height: Math.max(75, 1700 / dist),
+              width: Math.max(60, Math.min(110, 1500 / camDist)),
+              height: Math.max(60, Math.min(110, 1500 / camDist)),
               triage: 'RED',
               data: h
             });
@@ -320,12 +330,12 @@ class SensorFusionEngine {
             this.activeDetections.push({
               id: h.id,
               type: 'fire',
-              label: `THERMAL HAZARD: FIRE 99.4%`,
-              sublabel: `Core >450°C | Dense Smoke`,
+              label: `THERMAL HAZARD: FIRE 99%`,
+              sublabel: `Core >450°C | Smoke`,
               x: screenPos.x,
               y: screenPos.y,
-              width: Math.max(80, 1800 / dist),
-              height: Math.max(90, 2000 / dist),
+              width: Math.max(65, Math.min(115, 1600 / camDist)),
+              height: Math.max(70, Math.min(125, 1750 / camDist)),
               triage: 'RED',
               data: h
             });
@@ -333,6 +343,30 @@ class SensorFusionEngine {
         }
       }
     });
+
+    // 3. Evaluate Structural Earthquake Hazards in Active Simulation
+    if (isEarthquake && this.environment.structuralHazards) {
+      this.environment.structuralHazards.forEach(h => {
+        const screenPos = this.toScreenPosition(h.position);
+        if (screenPos.visible) {
+          const camDist = this.camera.position.distanceTo(h.position);
+          if (camDist < 160) {
+            this.activeDetections.push({
+              id: h.id,
+              type: h.boxClass || 'structural',
+              label: h.label,
+              sublabel: h.sublabel,
+              x: screenPos.x,
+              y: screenPos.y,
+              width: Math.max(50, Math.min(100, (h.scaleW || 1400) / camDist)),
+              height: Math.max(34, Math.min(68, (h.scaleH || 1000) / camDist)),
+              triage: h.triage || 'YELLOW',
+              data: h
+            });
+          }
+        }
+      });
+    }
   }
 
   toScreenPosition(worldPos) {

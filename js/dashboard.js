@@ -207,14 +207,50 @@ class TacticalGcsDashboard {
     if (!container) return;
 
     let html = '';
+    const placedLabels = [];
+
     this.sensors.activeDetections.forEach(det => {
       const left = det.x - det.width / 2;
       const top = det.y - det.height / 2;
 
+      // Smart label collision avoidance to prevent overlapping badges
+      let labelTopOffset = -24;
+      let labelClass = 'ai-label';
+      const myLabelX = left;
+      let myLabelY = top + labelTopOffset;
+
+      const collidesWithPlaced = (ly) => {
+        return placedLabels.some(p => Math.abs(p.x - myLabelX) < 100 && Math.abs(p.y - ly) < 22);
+      };
+
+      if (collidesWithPlaced(myLabelY)) {
+        const altY = top + det.height + 4;
+        if (!collidesWithPlaced(altY)) {
+          labelTopOffset = det.height + 4;
+          labelClass = 'ai-label pos-bottom';
+          myLabelY = altY;
+        } else {
+          labelTopOffset = -44;
+          labelClass = 'ai-label pos-higher';
+          myLabelY = top + labelTopOffset;
+        }
+      }
+
+      placedLabels.push({ x: myLabelX, y: myLabelY });
+      const triageClass = det.triage ? det.triage.toLowerCase() : 'yellow';
+
       html += `
-        <div class="ai-bbox ${det.type}" style="left:${left}px; top:${top}px; width:${det.width}px; height:${det.height}px;">
-          <div class="ai-label">
-            <span>${det.label}</span>
+        <div class="ai-bbox ${det.type}" style="left:${left.toFixed(1)}px; top:${top.toFixed(1)}px; width:${det.width.toFixed(1)}px; height:${det.height.toFixed(1)}px;">
+          <div class="ai-bbox-corner top-left"></div>
+          <div class="ai-bbox-corner top-right"></div>
+          <div class="ai-bbox-corner bottom-left"></div>
+          <div class="ai-bbox-corner bottom-right"></div>
+          <div class="${labelClass}" style="top:${labelTopOffset}px;">
+            <div class="ai-label-title">
+              <span class="ai-status-dot ${triageClass}"></span>
+              <span class="ai-label-code">${det.label}</span>
+            </div>
+            ${det.sublabel ? `<span class="ai-label-sub">${det.sublabel}</span>` : ''}
           </div>
         </div>
       `;
@@ -235,7 +271,7 @@ class TacticalGcsDashboard {
 
       let latBase = 28.6139;
       let lonBase = 77.2090;
-      let sectorName = 'NCR';
+      let sectorName = 'Urban Ruin Alpha-4';
       if (this.environment.currentScenario === 'flash_flood') {
         latBase = 26.2006;
         lonBase = 92.9376;
@@ -314,7 +350,7 @@ class TacticalGcsDashboard {
     let survivorRows = this.environment.survivors.map(s => `
       <tr>
         <td style="padding:6px; border:1px solid #334155;"><strong>${s.id}</strong></td>
-        <td style="padding:6px; border:1px solid #334155; color:${s.triage === 'RED' ? '#ef4444' : '#f59e0b'}; font-weight:700;">${s.triage}</td>
+        <td style="padding:6px; border:1px solid #334155; color:${s.triage === 'RED' ? '#ef4444' : (s.triage === 'GREEN' ? '#10b981' : '#f59e0b')}; font-weight:700;">${s.triage}</td>
         <td style="padding:6px; border:1px solid #334155;">${s.name}</td>
         <td style="padding:6px; border:1px solid #334155;">${s.temperature}°C (FLIR)</td>
         <td style="padding:6px; border:1px solid #334155;">${s.vitals}</td>
@@ -377,7 +413,9 @@ class TacticalGcsDashboard {
           <p><strong>RECOMMENDED EXTRACTION VECTOR:</strong> ${
             this.environment.currentScenario === 'flash_flood'
               ? 'NDRF motorized inflatable rescue boats (IRB) and SDRF disaster squads to ingress via elevated road embankment and western river channel. Priority evacuation for rooftop family (SURV-FL-01) and stranded raft victim (SURV-FL-02). Life jackets and hypothermia blankets required.'
-              : 'Ground squads must enter via Western Corridor Alpha (X:-35, Z:32) to circumvent toxic gas plume. First priority is critical RED triage casualties with FLIR core temp >37°C. Hazmat breathing apparatus required if gas level >150 PPM.'
+              : this.environment.currentScenario === 'earthquake'
+                ? 'NDRF search and rescue squads to ingress via South-East Boulevard (X:0, Z:30) avoiding central seismic fault scarp and downed power conduits. Structural shoring gear and heavy pneumatic lifters required for pancaked ruins and voids.'
+                : 'Ground squads must enter via Western Corridor Alpha (X:-35, Z:32) to circumvent toxic gas plume. First priority is critical RED triage casualties with FLIR core temp >37°C. Hazmat breathing apparatus required if gas level >150 PPM.'
           }</p>
         </div>
 
