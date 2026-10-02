@@ -249,6 +249,65 @@ class DroneModel {
     this.scannerVolume.visible = false;
     this.lidarBeam = this.scannerVolume;
     this.group.add(this.scannerVolume);
+
+    // 7. Subtle Prominence Outline / Glow & 3D Forward Heading Chevron
+    // Prominence requirement: drone visually cuts cleanly in front of floating annotations
+    const glowGroup = new THREE.Group();
+    glowGroup.name = 'uavProminenceGlow';
+
+    // A. Hexagonal hull silhouette glow rim (BackSide expansion for crisp contour outline)
+    const hullGlowGeo = new THREE.CylinderGeometry(0.88, 1.03, 0.37, 6);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      fog: false
+    });
+    const hullGlow = new THREE.Mesh(hullGlowGeo, glowMat);
+    glowGroup.add(hullGlow);
+
+    // B. Subtle outer tactical silhouette ring
+    const auraGeo = new THREE.RingGeometry(2.32, 2.38, 36);
+    const auraMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.28,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      fog: false
+    });
+    const auraRing = new THREE.Mesh(auraGeo, auraMat);
+    auraRing.rotation.x = Math.PI / 2;
+    auraRing.position.y = 0.05;
+    glowGroup.add(auraRing);
+
+    // C. 3D Forward Heading Indicator Chevron on UAV nose (+Z axis)
+    const headingChevronGeo = new THREE.ConeGeometry(0.12, 0.36, 4);
+    headingChevronGeo.rotateX(Math.PI / 2); // points forward along +Z nose
+    const headingMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.88,
+      fog: false
+    });
+    const headingChevron = new THREE.Mesh(headingChevronGeo, headingMat);
+    headingChevron.position.set(0, 0.14, 1.35);
+    headingChevron.name = 'uavHeadingIndicator3D';
+    glowGroup.add(headingChevron);
+
+    this.group.add(glowGroup);
+    this.prominenceGlow = glowGroup;
+    this.headingIndicator3D = headingChevron;
+  }
+
+  setDroneMeshVisibility(visible) {
+    this.group.children.forEach(child => {
+      // Keep lights (spotlight) and their target active so they illuminate ground/buildings in base pass
+      if (child.isLight || (this.spotlight && child === this.spotlight.target)) return;
+      child.visible = visible;
+    });
   }
 
   update(delta) {

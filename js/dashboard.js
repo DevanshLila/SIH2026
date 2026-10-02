@@ -219,7 +219,10 @@ class TacticalGcsDashboard {
     const tagText = document.getElementById('uav-tag-text');
     if (tagText) {
       const altM = Math.max(0, this.drone.position.y - this.drone.groundElevation);
-      tagText.textContent = `UAV-1 // ${altM.toFixed(1)}m`;
+      const hdg = (this.drone && this.drone.telemetry && typeof this.drone.telemetry.heading === 'number')
+        ? Math.round(((this.drone.telemetry.heading % 360) + 360) % 360)
+        : 0;
+      tagText.textContent = `UAV-1 // ${altM.toFixed(1)}m // HDG ${hdg.toString().padStart(3, '0')}°`;
     }
   }
 
