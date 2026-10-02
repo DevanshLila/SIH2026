@@ -284,13 +284,29 @@ class DroneModel {
     glowGroup.add(auraRing);
 
     // C. 3D Forward Heading Indicator Chevron on UAV nose (+Z axis)
-    const headingChevronGeo = new THREE.ConeGeometry(0.12, 0.36, 4);
-    headingChevronGeo.rotateX(Math.PI / 2); // points forward along +Z nose
+    // Custom aerodynamic 3D faceted chevron (BufferGeometry) pointing forward along +Z
+    const headingChevronGeo = new THREE.BufferGeometry();
+    const chevronVertices = new Float32Array([
+      // Top surface (4 triangles)
+      0.0, 0.0, 0.24,    0.0, 0.04, 0.03,   -0.15, 0.0, -0.14,
+      0.0, 0.0, 0.24,    0.15, 0.0, -0.14,   0.0, 0.04, 0.03,
+     -0.15, 0.0, -0.14,  0.0, 0.04, 0.03,    0.0, 0.0, -0.03,
+      0.15, 0.0, -0.14,  0.0, 0.0, -0.03,    0.0, 0.04, 0.03,
+      // Bottom surface (4 triangles)
+      0.0, 0.0, 0.24,   -0.15, 0.0, -0.14,   0.0, -0.04, 0.03,
+      0.0, 0.0, 0.24,    0.0, -0.04, 0.03,   0.15, 0.0, -0.14,
+     -0.15, 0.0, -0.14,  0.0, 0.0, -0.03,    0.0, -0.04, 0.03,
+      0.15, 0.0, -0.14,  0.0, -0.04, 0.03,   0.0, 0.0, -0.03
+    ]);
+    headingChevronGeo.setAttribute('position', new THREE.BufferAttribute(chevronVertices, 3));
+    headingChevronGeo.computeVertexNormals();
+
     const headingMat = new THREE.MeshBasicMaterial({
       color: 0x00f0ff,
       transparent: true,
       opacity: 0.88,
-      fog: false
+      fog: false,
+      side: THREE.DoubleSide
     });
     const headingChevron = new THREE.Mesh(headingChevronGeo, headingMat);
     headingChevron.position.set(0, 0.14, 1.35);
@@ -306,6 +322,8 @@ class DroneModel {
     this.group.children.forEach(child => {
       // Keep lights (spotlight) and their target active so they illuminate ground/buildings in base pass
       if (child.isLight || (this.spotlight && child === this.spotlight.target)) return;
+      // Keep decorative scanning volume hidden per sensors.js requirement
+      if (child === this.scannerVolume) return;
       child.visible = visible;
     });
   }

@@ -98,6 +98,12 @@ class App {
       this.uavRenderer.setSize(width, height);
       this.uavRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       this.uavRenderer.setClearColor(0x000000, 0); // Transparent background
+
+      uavCanvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        console.warn('UAV Overlay WebGL context lost. Falling back to base pass rendering.');
+        this.uavRenderer = null;
+      });
     }
 
     // 5. Lighting
@@ -1485,37 +1491,45 @@ class App {
 
     // 4. Base WebGL Render Pass (3D Environment + Detection Markers on #webgl-canvas, z-index: 1)
     // To ensure the UAV is strictly above detection labels (z-index: 8), hide UAV elements in base pass
+    // ONLY when the dedicated overlay renderer is available; otherwise gracefully fall back to base rendering.
     const isMainFPV = (this.cameraMode === 'FPV');
     const savedDroneVis = (this.drone && this.drone.group) ? this.drone.group.visible : false;
     const savedVectorVis = (this.sensors && this.sensors.movementVectorGroup) ? this.sensors.movementVectorGroup.visible : false;
     const savedTrajVis = (this.sensors && this.sensors.lidarTrajectoryLine) ? this.sensors.lidarTrajectoryLine.visible : false;
+    const overlayActive = !!this.uavRenderer;
 
-    if (this.drone && typeof this.drone.setDroneMeshVisibility === 'function') {
-      this.drone.setDroneMeshVisibility(false);
-    } else if (this.drone && this.drone.group) {
-      this.drone.group.visible = false;
+    if (overlayActive || isMainFPV) {
+      if (this.drone && typeof this.drone.setDroneMeshVisibility === 'function') {
+        this.drone.setDroneMeshVisibility(false);
+      } else if (this.drone && this.drone.group) {
+        this.drone.group.visible = false;
+      }
+      if (this.sensors && this.sensors.movementVectorGroup) this.sensors.movementVectorGroup.visible = false;
+      if (this.sensors && this.sensors.lidarTrajectoryLine) this.sensors.lidarTrajectoryLine.visible = false;
     }
-    if (this.sensors && this.sensors.movementVectorGroup) this.sensors.movementVectorGroup.visible = false;
-    if (this.sensors && this.sensors.lidarTrajectoryLine) this.sensors.lidarTrajectoryLine.visible = false;
 
     this.renderer.render(this.scene, this.camera);
 
-    // Restore drone visibility
-    if (this.drone && typeof this.drone.setDroneMeshVisibility === 'function') {
-      this.drone.setDroneMeshVisibility(true);
-    } else if (this.drone && this.drone.group) {
-      this.drone.group.visible = savedDroneVis;
+    // Restore drone visibility for overlay pass / PIP inset
+    if (overlayActive || isMainFPV) {
+      if (savedDroneVis && this.drone && typeof this.drone.setDroneMeshVisibility === 'function') {
+        this.drone.setDroneMeshVisibility(true);
+      } else if (this.drone && this.drone.group) {
+        this.drone.group.visible = savedDroneVis;
+      }
+      if (this.sensors && this.sensors.movementVectorGroup) this.sensors.movementVectorGroup.visible = savedVectorVis;
+      if (this.sensors && this.sensors.lidarTrajectoryLine) this.sensors.lidarTrajectoryLine.visible = savedTrajVis;
     }
-    if (this.sensors && this.sensors.movementVectorGroup) this.sensors.movementVectorGroup.visible = savedVectorVis;
-    if (this.sensors && this.sensors.lidarTrajectoryLine) this.sensors.lidarTrajectoryLine.visible = savedTrajVis;
 
     // 5. Dedicated Synchronized UAV Overlay Render Pass (#uav-overlay-canvas, z-index: 12)
     // Renders UAV, heading indicator, movement vector & trajectory STRICTLY ABOVE detection labels (z-index: 8)
     if (this.uavRenderer) {
       if (!isMainFPV && this.drone && this.drone.group && savedDroneVis) {
-        // Temporarily clear scene background so overlay canvas has transparent background
+        // Temporarily clear scene background and fog so overlay canvas has transparent background without fog washouts
         const savedBg = this.scene.background;
+        const savedFog = this.scene.fog;
         this.scene.background = null;
+        this.scene.fog = null;
 
         // Temporarily hide all non-UAV and non-light scene children
         const hiddenObjects = [];
@@ -1530,13 +1544,18 @@ class App {
           }
         }
 
-        this.uavRenderer.render(this.scene, this.camera);
-
-        // Restore hidden objects and scene background
-        for (let i = 0; i < hiddenObjects.length; i++) {
-          hiddenObjects[i].visible = true;
+        try {
+          this.uavRenderer.render(this.scene, this.camera);
+        } catch (err) {
+          console.warn('UAV overlay render error:', err);
+        } finally {
+          // Guaranteed restoration of scene objects, background, and atmospheric fog
+          for (let i = 0; i < hiddenObjects.length; i++) {
+            hiddenObjects[i].visible = true;
+          }
+          this.scene.background = savedBg;
+          this.scene.fog = savedFog;
         }
-        this.scene.background = savedBg;
       } else {
         this.uavRenderer.clear();
       }

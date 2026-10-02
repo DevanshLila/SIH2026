@@ -533,11 +533,22 @@ class TacticalGcsDashboard {
       }
     });
 
+    let demoHtml = '';
+    if (window.__uavOverlapDemoActive && uavScreen && uavScreen.visible) {
+      demoHtml = `
+        <div id="uav-direct-overlap-demo-label" class="ai-label survivor" style="position:absolute; left:${(uavScreen.x - 85).toFixed(1)}px; top:${(uavScreen.y - 25).toFixed(1)}px; width:170px; height:50px; background:rgba(6, 12, 24, 0.75); border:2px solid #ef4444; box-shadow:0 0 12px rgba(239, 68, 68, 0.6); pointer-events:none; z-index:8;">
+          <div class="ai-label-title" style="color:#ef4444; font-weight:800; font-size:0.68rem; letter-spacing:0.5px;">[SURVIVOR] DIRECT OVERLAP</div>
+          <div class="ai-label-sub" style="font-size:0.58rem; color:#94a3b8;">UAV VISIBLE ABOVE LABEL (Z:12 > Z:8)</div>
+        </div>
+      `;
+    }
+
     container.innerHTML = `
       <svg class="ai-connectors-svg" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9;">
         ${svgConnectors}
       </svg>
       ${html}
+      ${demoHtml}
     `;
   }
 

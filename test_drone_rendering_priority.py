@@ -445,9 +445,11 @@ try:
 
     # Switch back to OPTICAL mode
     eval_js(ws, "window.droneApp.sensors.setSensorMode('RGB');")
-    time.sleep(1.0)
-
     print("\n=== TEST 7: Capture High-Resolution Verification Screenshot ===")
+    # Activate live overlap demo label directly underneath UAV so screenshot clearly captures UAV rendering above it
+    eval_js(ws, "window.__uavOverlapDemoActive = true;")
+    time.sleep(0.5)
+
     shot_resp = send_cdp(ws, 'Page.captureScreenshot', {'format': 'png'})
     img_b64 = shot_resp.get('result', {}).get('data', '')
     if img_b64:
@@ -456,6 +458,10 @@ try:
         with open(out_path, 'wb') as f:
             f.write(img_bytes)
         print(f"  [Screenshot] Saved: drone_rendering_priority_verified.png ({len(img_bytes)} bytes)")
+
+    # Deactivate demo mode
+    eval_js(ws, "window.__uavOverlapDemoActive = false;")
+    time.sleep(0.2)
 
     print("\n=======================================================")
     print("  ALL DRONE RENDERING PRIORITY TESTS PASSED!")
