@@ -21,6 +21,7 @@ class DisasterEnvironment {
     this.gasPlumeEmitter = null;
     this.obstacleColliders = []; // Real meshes used for LiDAR geometric raycasting
     this.emergencyLights = []; // Flashing emergency vehicle / scene lights
+    this.obstructionLights = []; // Aviation obstruction beacons on tall structures
     this.structuralHazards = []; // Structural AI detection markers for Earthquake simulation
     this.waterMesh = null;
     this.waterGeo = null;
@@ -91,6 +92,7 @@ class DisasterEnvironment {
     this.gasPlumeEmitter = null;
     this.obstacleColliders = [];
     this.emergencyLights = [];
+    this.obstructionLights = [];
     this.structuralHazards = [];
     this.waterMesh = null;
     this.waterGeo = null;
@@ -1108,6 +1110,7 @@ class DisasterEnvironment {
     bldg1Group.rotation.z = 0.12;
     bldg1Group.rotation.x = -0.05;
     this.environmentGroup.add(bldg1Group);
+    this.addObstructionBeaconLight(new THREE.Vector3(-28, 29.5, -28));
 
     // =========================================================================
     // BUILDING 2: "Grand Plaza Commercial Mall" - Catastrophic 5-Tier Pancaked Collapse
@@ -1281,6 +1284,7 @@ class DisasterEnvironment {
     bldg4Group.rotation.z = -0.09;
     bldg4Group.rotation.x = 0.04;
     this.environmentGroup.add(bldg4Group);
+    this.addObstructionBeaconLight(new THREE.Vector3(25, 33.5, 10));
 
     // =========================================================================
     // BUILDING 5: "Sunset Duplex" - Sandwich V-Shape Roof Collapse
@@ -2764,7 +2768,7 @@ class DisasterEnvironment {
         bldgGroup.add(mast);
         this.obstacleColliders.push(mast);
 
-        this.addEmergencyBeaconLight(new THREE.Vector3(cfg.x - w / 3, h + 6.0, cfg.z - d / 3), true);
+        this.addObstructionBeaconLight(new THREE.Vector3(cfg.x - w / 3, h + 6.0, cfg.z - d / 3));
       }
 
       this.environmentGroup.add(bldgGroup);
@@ -5222,11 +5226,26 @@ class DisasterEnvironment {
   }
 
   addEmergencyBeaconLight(pos, alwaysActive = false) {
-    const beacon = new THREE.PointLight(0xff0044, alwaysActive ? 2.0 : 2.5, 30, 2);
+    const beacon = new THREE.PointLight(0xff0044, alwaysActive ? 1.4 : 1.8, 12, 2);
     beacon.position.copy(pos);
     beacon.visible = alwaysActive || this.isNightMode;
     this.environmentGroup.add(beacon);
     this.emergencyLights.push({ light: beacon, basePos: pos, phase: Math.random() * Math.PI, alwaysActive });
+  }
+
+  addObstructionBeaconLight(pos) {
+    const ledGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    const ledMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const led = new THREE.Mesh(ledGeo, ledMat);
+    led.position.copy(pos);
+    this.environmentGroup.add(led);
+
+    const light = new THREE.PointLight(0xef4444, 0.75, 6, 2);
+    light.position.copy(pos);
+    light.visible = true;
+    this.environmentGroup.add(light);
+    this.obstructionLights = this.obstructionLights || [];
+    this.obstructionLights.push({ led, light, basePos: pos });
   }
 
   createUWBAnchors() {
@@ -5379,11 +5398,17 @@ class DisasterEnvironment {
       if (s.scanPulse && s.scanPulse > 0) {
         s.scanPulse = Math.max(0, s.scanPulse - delta * 0.75);
         if (s.heatCore) {
-          s.heatCore.visible = true;
-          s.heatCore.material.opacity = 0.35 + s.scanPulse * 0.55;
-          const pulseScale = (s.isObstructed ? 1.4 : 1.0) * (1.0 + s.scanPulse * 0.35);
-          s.heatCore.scale.set(pulseScale, pulseScale, pulseScale);
+          const isThermal = (window.droneApp && window.droneApp.sensors && window.droneApp.sensors.sensorMode === 'THERMAL');
+          s.heatCore.visible = isThermal;
+          if (isThermal) {
+            s.heatCore.material.opacity = 0.35 + s.scanPulse * 0.55;
+            const pulseScale = (s.isObstructed ? 1.4 : 1.0) * (1.0 + s.scanPulse * 0.35);
+            s.heatCore.scale.set(pulseScale, pulseScale, pulseScale);
+          }
         }
+      } else if (s.heatCore) {
+        const isThermal = (window.droneApp && window.droneApp.sensors && window.droneApp.sensors.sensorMode === 'THERMAL');
+        if (!isThermal) s.heatCore.visible = false;
       }
     });
 
@@ -5444,14 +5469,36 @@ class DisasterEnvironment {
     }
 
     // 4. Animate emergency vehicle / boat beacon flashing
+    const isNVG = (window.droneApp && window.droneApp.sensors && window.droneApp.sensors.sensorMode === 'NVG');
     this.emergencyLights.forEach(item => {
       if (this.isNightMode || item.alwaysActive) {
         const now = Date.now() * 0.008;
-        const isRed = Math.sin(now + item.phase) > 0;
-        item.light.color.setHex(isRed ? 0xff0044 : 0x0066ff);
-        item.light.intensity = (this.isNightMode ? 2.5 : 1.6) + Math.sin(now * 2) * 1.0;
+        if (isNVG) {
+          // Night Vision Requirement 5: Keep lighting stable, no saturated red/blue colors.
+          // Emergency lights appear as pure green luminance changes (BRIGHT -> DARK -> BRIGHT)
+          item.light.color.setHex(0xffffff);
+          item.light.intensity = 1.3 + Math.sin(now * 2) * 0.7;
+        } else {
+          const isRed = Math.sin(now + item.phase) > 0;
+          item.light.color.setHex(isRed ? 0xff0044 : 0x0066ff);
+          item.light.intensity = (this.isNightMode ? 1.8 : 1.3) + Math.sin(now * 2) * 0.6;
+        }
       }
     });
+
+    // 4b. Animate rooftop obstruction lights
+    if (this.obstructionLights && this.obstructionLights.length > 0) {
+      const now = Date.now() * 0.003;
+      const obsIntensity = 0.65 + Math.sin(now) * 0.2;
+      this.obstructionLights.forEach(item => {
+        if (isNVG) {
+          item.light.color.setHex(0xffffff);
+        } else {
+          item.light.color.setHex(0xef4444);
+        }
+        item.light.intensity = obsIntensity;
+      });
+    }
 
     // 5. Animate fire & smoke particles
     this.hazards.forEach(h => {

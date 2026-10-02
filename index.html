@@ -101,7 +101,29 @@
 
         <!-- Thermal / NVG Shader Scanline Overlays -->
         <div id="thermal-scanlines" class="thermal-scanline-overlay" style="display:none !important;"></div>
-        <div id="nvg-filter" class="nvg-overlay"></div>
+        <div id="nvg-filter" class="nvg-overlay" style="display:none !important;"></div>
+
+        <!-- Night Vision Low-Light Optical Sensor HUD Badge -->
+        <div id="nvg-hud-badge" class="nvg-hud-badge" style="display: none;">
+          <div class="nvg-hud-header">
+            <span class="nvg-hud-dot"></span>
+            <span class="nvg-hud-title">NIGHT VISION</span>
+          </div>
+          <div class="nvg-hud-body">
+            <div class="nvg-hud-row">
+              <span class="nvg-hud-lbl">MODE</span>
+              <span class="nvg-hud-val green">LOW-LIGHT OPTICAL</span>
+            </div>
+            <div class="nvg-hud-row">
+              <span class="nvg-hud-lbl">GAIN</span>
+              <span id="nvg-val-gain" class="nvg-hud-val green">AUTO (2.8x)</span>
+            </div>
+            <div class="nvg-hud-row">
+              <span class="nvg-hud-lbl">EXPOSURE</span>
+              <span id="nvg-val-exposure" class="nvg-hud-val green">AUTO [NOMINAL]</span>
+            </div>
+          </div>
+        </div>
 
         <!-- FLIR Thermal Radiometric Temperature Scale Legend -->
         <div id="thermal-legend" class="thermal-legend" style="display: none;">
@@ -737,6 +759,7 @@
   <script src="js/drone.js?v=4"></script>
   <script src="js/environment.js?v=4"></script>
   <script src="js/thermal.js?v=4"></script>
+  <script src="js/nightvision.js?v=4"></script>
   <script src="js/sensors.js?v=4"></script>
   <script src="js/navigation.js?v=4"></script>
   <script src="js/map.js?v=4"></script>

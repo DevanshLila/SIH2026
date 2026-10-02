@@ -148,6 +148,14 @@ class App {
     // 3. Multi-Sensor Fusion
     this.sensors = new SensorFusionEngine(this.drone, this.environment, this.camera, this.renderer);
 
+    // 3b. Real-Time Night Vision Imaging & Intensification Engine
+    if (typeof NightVisionEngine !== 'undefined') {
+      this.nightVisionEngine = new NightVisionEngine(this.renderer, this.scene, this.camera, this.pipRenderer, this.pipCamera, this.uavRenderer);
+      if (this.sensors) {
+        this.sensors.nightVisionEngine = this.nightVisionEngine;
+      }
+    }
+
     // 4. Autonomous Navigator
     this.navigator = new AutonomousNavigator(this.drone, this.environment);
 
@@ -343,6 +351,12 @@ class App {
       this.pipCamera.aspect = pipCanvas.clientWidth / pipCanvas.clientHeight;
       this.pipCamera.updateProjectionMatrix();
       this.pipRenderer.setSize(pipCanvas.clientWidth, pipCanvas.clientHeight);
+    }
+
+    if (this.nightVisionEngine) {
+      const pipW = (pipCanvas && pipCanvas.clientWidth) ? pipCanvas.clientWidth : 280;
+      const pipH = (pipCanvas && pipCanvas.clientHeight) ? pipCanvas.clientHeight : 170;
+      this.nightVisionEngine.handleResize(w, h, pipW, pipH);
     }
   }
 
@@ -1390,6 +1404,10 @@ class App {
     }
   }
 
+  setNightMode(state) {
+    this.toggleDayNightMode(state);
+  }
+
   toggleDayNightMode(forceState = null) {
     this.isNightMode = (forceState !== null) ? forceState : !this.isNightMode;
     const btn = document.getElementById('btn-day-night');
@@ -1498,6 +1516,15 @@ class App {
     const savedTrajVis = (this.sensors && this.sensors.lidarTrajectoryLine) ? this.sensors.lidarTrajectoryLine.visible : false;
     const overlayActive = !!this.uavRenderer;
 
+    // Update Night Vision Engine if active
+    const isNVG = (this.sensors && this.sensors.sensorMode === 'NVG' && this.nightVisionEngine && this.nightVisionEngine.isActive);
+    if (this.nightVisionEngine && this.nightVisionEngine.isActive) {
+      const dronePos = (this.drone && this.drone.group) ? this.drone.group.position : null;
+      const hazards = (this.environment && this.environment.hazards) ? this.environment.hazards : [];
+      const spotlightActive = (this.drone && this.drone.spotlight) ? this.drone.spotlight.visible : false;
+      this.nightVisionEngine.update(delta, dronePos, this.isNightMode, hazards, spotlightActive);
+    }
+
     if (overlayActive || isMainFPV) {
       if (this.drone && typeof this.drone.setDroneMeshVisibility === 'function') {
         this.drone.setDroneMeshVisibility(false);
@@ -1508,7 +1535,11 @@ class App {
       if (this.sensors && this.sensors.lidarTrajectoryLine) this.sensors.lidarTrajectoryLine.visible = false;
     }
 
-    this.renderer.render(this.scene, this.camera);
+    if (isNVG) {
+      this.nightVisionEngine.renderMain(this.renderer, this.scene, this.camera);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
 
     // Restore drone visibility for overlay pass / PIP inset
     if (overlayActive || isMainFPV) {
@@ -1545,7 +1576,11 @@ class App {
         }
 
         try {
-          this.uavRenderer.render(this.scene, this.camera);
+          if (isNVG) {
+            this.nightVisionEngine.renderUav(this.uavRenderer, this.scene, this.camera);
+          } else {
+            this.uavRenderer.render(this.scene, this.camera);
+          }
         } catch (err) {
           console.warn('UAV overlay render error:', err);
         } finally {
@@ -1565,7 +1600,11 @@ class App {
     if (this.pipRenderer && this.pipCamera) {
       const isPipGimbal = (this.cameraMode === 'FOLLOW' || this.cameraMode === 'ISO');
       if (isPipGimbal && this.drone && this.drone.group) this.drone.group.visible = false;
-      this.pipRenderer.render(this.scene, this.pipCamera);
+      if (isNVG) {
+        this.nightVisionEngine.renderPip(this.pipRenderer, this.scene, this.pipCamera);
+      } else {
+        this.pipRenderer.render(this.scene, this.pipCamera);
+      }
       if (isPipGimbal && this.drone && this.drone.group) this.drone.group.visible = true;
     }
   }

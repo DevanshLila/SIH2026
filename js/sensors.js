@@ -1832,10 +1832,13 @@ class SensorFusionEngine {
     if (container) {
       container.classList.remove('thermal-filter');
       container.classList.remove('thermal-mode');
+      container.classList.remove('nvg-mode');
     }
     if (thermalScan) thermalScan.style.display = 'none';
     if (nvgOverlay) nvgOverlay.style.display = 'none';
     if (thermalLegend) thermalLegend.style.display = 'none';
+    const nvgBadge = document.getElementById('nvg-hud-badge');
+    if (nvgBadge) nvgBadge.style.display = 'none';
 
     // 3D LiDAR SLAM mode handling & Three-Zone Environment Switch
     const isLidar = (mode === 'LIDAR');
@@ -1870,13 +1873,27 @@ class SensorFusionEngine {
       }
     }
 
+    // Night Vision Engine Activation & Multi-Camera Sync
+    const app = window.droneApp;
+    const nvgEngine = (app && app.nightVisionEngine) ? app.nightVisionEngine : (this.nightVisionEngine || null);
+    if (nvgEngine) {
+      if (mode === 'NVG') {
+        nvgEngine.enable();
+      } else {
+        nvgEngine.disable();
+      }
+    }
+
     if (mode === 'THERMAL') {
       if (container) {
         container.classList.add('thermal-mode');
       }
       if (thermalLegend) thermalLegend.style.display = 'flex';
     } else if (mode === 'NVG') {
-      if (nvgOverlay) nvgOverlay.style.display = 'block';
+      if (container) {
+        container.classList.add('nvg-mode');
+      }
+      if (nvgBadge) nvgBadge.style.display = 'block';
     }
   }
 
