@@ -202,69 +202,340 @@ class TacticalGcsDashboard {
     }
   }
 
+  updateUAVReticle(uavScreen) {
+    const reticle = document.getElementById('uav-screen-reticle');
+    if (!reticle) return;
+
+    const isFpv = (this.sensors.cameraMode === 'FPV');
+    if (isFpv || !uavScreen || !uavScreen.visible) {
+      reticle.style.display = 'none';
+      return;
+    }
+
+    reticle.style.display = 'block';
+    reticle.style.left = `${uavScreen.x.toFixed(1)}px`;
+    reticle.style.top = `${uavScreen.y.toFixed(1)}px`;
+
+    const tagText = document.getElementById('uav-tag-text');
+    if (tagText) {
+      const altM = Math.max(0, this.drone.position.y - this.drone.groundElevation);
+      tagText.textContent = `UAV-1 // ${altM.toFixed(1)}m`;
+    }
+  }
+
   renderAIBoundingBoxes() {
     const container = document.getElementById('ai-detections-container');
     if (!container) return;
 
-    let html = '';
-    const placedLabels = [];
+    if (!this.aiLabelsListenerBound) {
+      container.addEventListener('click', (e) => {
+        const lbl = e.target.closest('.ai-label');
+        if (lbl) {
+          lbl.classList.toggle('expanded');
+        }
+      });
+      this.aiLabelsListenerBound = true;
+    }
 
-    this.sensors.activeDetections.forEach(det => {
+    const screenW = container.clientWidth || window.innerWidth;
+    const screenH = container.clientHeight || window.innerHeight;
+
+    // Get UAV screen position for repulsion and dedicated overlay
+    const uavScreen = this.sensors.toScreenPosition(this.drone.position);
+    this.updateUAVReticle(uavScreen);
+
+    if (!this.sensors.activeDetections || this.sensors.activeDetections.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    // 1. Establish Strict Exclusion Zones (UAV, Crosshair, Panels, HUD edges)
+    const placedBoxes = [];
+
+    // UAV Strict Exclusion Zone (Guarantees drone is NEVER covered)
+    if (uavScreen && uavScreen.visible) {
+      placedBoxes.push({
+        x1: uavScreen.x - 65,
+        y1: uavScreen.y - 50,
+        x2: uavScreen.x + 65,
+        y2: uavScreen.y + 50,
+        isUav: true
+      });
+    }
+
+    // Center Crosshair Exclusion Zone
+    placedBoxes.push({
+      x1: screenW * 0.5 - 38,
+      y1: screenH * 0.5 - 38,
+      x2: screenW * 0.5 + 38,
+      y2: screenH * 0.5 + 38,
+      isCrosshair: true
+    });
+
+    // Top Navigation & Weather HUD Bar
+    placedBoxes.push({
+      x1: 0,
+      y1: 0,
+      x2: screenW,
+      y2: 48
+    });
+
+    // Bottom Action / Flight Mode Bar
+    placedBoxes.push({
+      x1: 0,
+      y1: screenH - 52,
+      x2: screenW,
+      y2: screenH
+    });
+
+    // Secondary Camera Inset (PIP Window)
+    placedBoxes.push({
+      x1: 0,
+      y1: screenH - 165,
+      x2: 195,
+      y2: screenH
+    });
+
+    // Top-Right LiDAR Status Panel (if in LiDAR mode)
+    if (this.sensors.sensorMode === 'LIDAR') {
+      placedBoxes.push({
+        x1: screenW - 250,
+        y1: 45,
+        x2: screenW,
+        y2: 360
+      });
+    }
+
+    // 2D box overlap test with margin
+    const overlaps = (b1, b2, margin = 4) => {
+      return !(
+        b1.x2 + margin <= b2.x1 ||
+        b1.x1 - margin >= b2.x2 ||
+        b1.y2 + margin <= b2.y1 ||
+        b1.y1 - margin >= b2.y2
+      );
+    };
+
+    const isAreaClear = (box) => {
+      if (box.x1 < 4 || box.x2 > screenW - 4 || box.y1 < 4 || box.y2 > screenH - 4) {
+        return false;
+      }
+      for (let i = 0; i < placedBoxes.length; i++) {
+        if (overlaps(box, placedBoxes[i], 3)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    // 2. Prioritize Detections (Requirement 4 & 8)
+    const scoredDetections = this.sensors.activeDetections.map(det => {
+      let pWeight = 20;
+      if (det.type === 'survivor') {
+        pWeight = det.triage === 'RED' ? 100 : (det.triage === 'YELLOW' ? 90 : 80);
+      } else if (det.type === 'fire' || det.type === 'gas') {
+        pWeight = 85;
+      } else if (det.type === 'structural' || det.type === 'unstable') {
+        pWeight = 65;
+      } else if (det.type === 'obstacle' || det.type === 'void' || det.type === 'road_fracture') {
+        pWeight = 50;
+      }
+
+      const dist = (det.data && det.data.position) ? this.drone.position.distanceTo(det.data.position) : 30;
+      const score = pWeight - (dist * 0.45);
+      return { det, dist, score };
+    });
+
+    scoredDetections.sort((a, b) => b.score - a.score);
+
+    let html = '';
+    let svgConnectors = '';
+
+    scoredDetections.forEach((item, index) => {
+      const { det, dist } = item;
       const left = det.x - det.width / 2;
       const top = det.y - det.height / 2;
+      const cx = det.x;
+      const cy = det.y;
+      const bw = det.width;
+      const bh = det.height;
 
-      // Smart label collision avoidance to prevent overlapping badges
-      let labelTopOffset = -24;
-      let labelClass = 'ai-label';
-      const myLabelX = left;
-      let myLabelY = top + labelTopOffset;
+      // Determine LOD Tier based on priority rank and distance
+      let lod = 'standard';
+      let estW = 168;
+      let estH = 48;
 
-      const collidesWithPlaced = (ly) => {
-        return placedLabels.some(p => Math.abs(p.x - myLabelX) < 100 && Math.abs(p.y - ly) < 22);
-      };
+      if (dist > 75 || index >= 10) {
+        lod = 'micro';
+        estW = 85;
+        estH = 18;
+      } else if (dist > 45 || index >= 5) {
+        lod = 'mini';
+        estW = 128;
+        estH = 26;
+      }
 
-      if (collidesWithPlaced(myLabelY)) {
-        const altY = top + det.height + 4;
-        if (!collidesWithPlaced(altY)) {
-          labelTopOffset = det.height + 4;
-          labelClass = 'ai-label pos-bottom';
-          myLabelY = altY;
-        } else {
-          labelTopOffset = -44;
-          labelClass = 'ai-label pos-higher';
-          myLabelY = top + labelTopOffset;
+      // Generate Candidate Placement Slots relative to bounding box
+      const pad = 6;
+      const candidateSlots = [
+        // Slot 0: Above bbox
+        { x1: cx - estW / 2, y1: cy - bh / 2 - estH - pad, x2: cx + estW / 2, y2: cy - bh / 2 - pad },
+        // Slot 1: Below bbox
+        { x1: cx - estW / 2, y1: cy + bh / 2 + pad, x2: cx + estW / 2, y2: cy + bh / 2 + estH + pad },
+        // Slot 2: Right of bbox
+        { x1: cx + bw / 2 + pad, y1: cy - estH / 2, x2: cx + bw / 2 + estW + pad, y2: cy + estH / 2 },
+        // Slot 3: Left of bbox
+        { x1: cx - bw / 2 - estW - pad, y1: cy - estH / 2, x2: cx - bw / 2 - pad, y2: cy + estH / 2 },
+        // Slot 4: Top-Right
+        { x1: cx + bw / 2 + pad, y1: cy - bh / 2 - estH - pad, x2: cx + bw / 2 + estW + pad, y2: cy - bh / 2 - pad },
+        // Slot 5: Top-Left
+        { x1: cx - bw / 2 - estW - pad, y1: cy - bh / 2 - estH - pad, x2: cx - bw / 2 - pad, y2: cy - bh / 2 - pad },
+        // Slot 6: Bottom-Right
+        { x1: cx + bw / 2 + pad, y1: cy + bh / 2 + pad, x2: cx + bw / 2 + estW + pad, y2: cy + bh / 2 + estH + pad },
+        // Slot 7: Bottom-Left
+        { x1: cx - bw / 2 - estW - pad, y1: cy + bh / 2 + pad, x2: cx - bw / 2 - pad, y2: cy + bh / 2 + estH + pad }
+      ];
+
+      let chosenBox = null;
+      for (let s = 0; s < candidateSlots.length; s++) {
+        if (isAreaClear(candidateSlots[s])) {
+          chosenBox = candidateSlots[s];
+          break;
         }
       }
 
-      placedLabels.push({ x: myLabelX, y: myLabelY });
+      // If all 8 standard slots are occupied, search radially outward
+      if (!chosenBox) {
+        const radii = [bh / 2 + 35, bh / 2 + 65, bh / 2 + 95, bh / 2 + 130];
+        const angles = [
+          Math.PI * 0.25, Math.PI * 0.75, -Math.PI * 0.25, -Math.PI * 0.75,
+          0, Math.PI * 0.5, Math.PI, -Math.PI * 0.5,
+          Math.PI * 0.125, Math.PI * 0.375, Math.PI * 0.625, Math.PI * 0.875
+        ];
+        for (let r = 0; r < radii.length && !chosenBox; r++) {
+          for (let a = 0; a < angles.length; a++) {
+            const rad = radii[r];
+            const ang = angles[a];
+            const testX = cx + rad * Math.cos(ang) - estW / 2;
+            const testY = cy + rad * Math.sin(ang) - estH / 2;
+            const testBox = { x1: testX, y1: testY, x2: testX + estW, y2: testY + estH };
+            if (isAreaClear(testBox)) {
+              chosenBox = testBox;
+              break;
+            }
+          }
+        }
+      }
+
+      // If still no space, demote to mini, then micro to prevent screen overlap
+      if (!chosenBox && lod === 'standard') {
+        lod = 'mini';
+        estW = 128;
+        estH = 26;
+        for (let s = 0; s < candidateSlots.length; s++) {
+          const slot = { x1: candidateSlots[s].x1, y1: candidateSlots[s].y1, x2: candidateSlots[s].x1 + estW, y2: candidateSlots[s].y1 + estH };
+          if (isAreaClear(slot)) {
+            chosenBox = slot;
+            break;
+          }
+        }
+      }
+
+      if (!chosenBox && lod !== 'micro') {
+        lod = 'micro';
+        estW = 85;
+        estH = 18;
+        for (let s = 0; s < candidateSlots.length; s++) {
+          const slot = { x1: candidateSlots[s].x1, y1: candidateSlots[s].y1, x2: candidateSlots[s].x1 + estW, y2: candidateSlots[s].y1 + estH };
+          if (isAreaClear(slot)) {
+            chosenBox = slot;
+            break;
+          }
+        }
+      }
+
       const triageClass = det.triage ? det.triage.toLowerCase() : 'yellow';
       const obstructedClass = det.isObstructed ? 'obstructed' : '';
       const acquiringClass = det.isAcquiring ? 'acquiring-lock' : '';
       const thermalIcon = det.isObstructed ? '<span class="ai-thermal-indicator" title="Thermal Hotspot Detected">🔥</span>' : '';
       const lockBanner = det.isAcquiring ? '<span class="ai-lock-reticle mono">[LOCK]</span>' : '';
 
-      html += `
-        <div class="ai-bbox ${det.type} ${obstructedClass} ${acquiringClass}" style="left:${left.toFixed(1)}px; top:${top.toFixed(1)}px; width:${det.width.toFixed(1)}px; height:${det.height.toFixed(1)}px;">
-          <div class="ai-bbox-corner top-left"></div>
-          <div class="ai-bbox-corner top-right"></div>
-          <div class="ai-bbox-corner bottom-left"></div>
-          <div class="ai-bbox-corner bottom-right"></div>
-          <div class="${labelClass}" style="top:${labelTopOffset}px;">
-            <div class="ai-label-title">
-              <span class="ai-status-dot ${triageClass}"></span>
-              <span class="ai-label-code">${det.label}</span>
-              ${lockBanner}
-              ${thermalIcon}
+      // Leader connector line if shifted away from anchor reticle
+      if (chosenBox) {
+        placedBoxes.push(chosenBox);
+        const placedX = chosenBox.x1;
+        const placedY = chosenBox.y1;
+        const offsetLeft = placedX - left;
+        const offsetTop = placedY - top;
+
+        const labelCenterX = placedX + estW / 2;
+        const labelCenterY = placedY + estH / 2;
+        const distFromAnchor = Math.hypot(labelCenterX - cx, labelCenterY - cy);
+
+        if (distFromAnchor > 18) {
+          const targetX = Math.max(placedX, Math.min(placedX + estW, cx));
+          const targetY = Math.max(placedY, Math.min(placedY + estH, cy));
+          const anchorX = Math.max(left, Math.min(left + bw, targetX));
+          const anchorY = Math.max(top, Math.min(top + bh, targetY));
+
+          let lineColor = '#00f0ff';
+          if (det.type === 'survivor') {
+            lineColor = det.triage === 'RED' ? '#ef4444' : (det.triage === 'YELLOW' ? '#f59e0b' : '#10b981');
+          } else if (det.type === 'fire') {
+            lineColor = '#f97316';
+          } else if (det.type === 'gas') {
+            lineColor = '#a855f7';
+          } else if (det.type === 'structural' || det.type === 'unstable') {
+            lineColor = '#f59e0b';
+          } else if (det.type === 'void') {
+            lineColor = '#c084fc';
+          }
+
+          svgConnectors += `
+            <line x1="${anchorX.toFixed(1)}" y1="${anchorY.toFixed(1)}" x2="${targetX.toFixed(1)}" y2="${targetY.toFixed(1)}" stroke="${lineColor}" stroke-width="1.2" stroke-dasharray="3,2" opacity="0.45" />
+            <circle cx="${anchorX.toFixed(1)}" cy="${anchorY.toFixed(1)}" r="1.5" fill="${lineColor}" opacity="0.75" />
+          `;
+        }
+
+        // Render Bounding Box and decoupled Label with relative offset
+        html += `
+          <div class="ai-bbox ${det.type} ${obstructedClass} ${acquiringClass}" style="left:${left.toFixed(1)}px; top:${top.toFixed(1)}px; width:${bw.toFixed(1)}px; height:${bh.toFixed(1)}px;">
+            <div class="ai-bbox-corner top-left"></div>
+            <div class="ai-bbox-corner top-right"></div>
+            <div class="ai-bbox-corner bottom-left"></div>
+            <div class="ai-bbox-corner bottom-right"></div>
+            <div class="ai-label ${det.type} ${lod}" style="left:${offsetLeft.toFixed(1)}px; top:${offsetTop.toFixed(1)}px;" data-id="${det.id}" title="Click to toggle full info">
+              <div class="ai-label-title">
+                <span class="ai-status-dot ${triageClass}"></span>
+                <span class="ai-label-code">${det.label}</span>
+                ${lockBanner}
+                ${thermalIcon}
+              </div>
+              ${det.stateLabel && lod === 'standard' ? `<div class="ai-label-state">${det.stateLabel}</div>` : ''}
+              ${det.lidarFusion && lod !== 'micro' ? `<div class="ai-label-lidar-fusion">${det.lidarFusion}</div>` : ''}
+              ${det.sublabel && lod === 'standard' ? `<span class="ai-label-sub">${det.sublabel}</span>` : ''}
             </div>
-            ${det.stateLabel ? `<div class="ai-label-state">${det.stateLabel}</div>` : ''}
-            ${det.lidarFusion ? `<div class="ai-label-lidar-fusion">${det.lidarFusion}</div>` : ''}
-            ${det.sublabel ? `<span class="ai-label-sub">${det.sublabel}</span>` : ''}
           </div>
-        </div>
-      `;
+        `;
+      } else {
+        // Marker only (reticle corners on object without dialog to keep screen clear)
+        html += `
+          <div class="ai-bbox ${det.type} ${obstructedClass} ${acquiringClass}" style="left:${left.toFixed(1)}px; top:${top.toFixed(1)}px; width:${bw.toFixed(1)}px; height:${bh.toFixed(1)}px;">
+            <div class="ai-bbox-corner top-left"></div>
+            <div class="ai-bbox-corner top-right"></div>
+            <div class="ai-bbox-corner bottom-left"></div>
+            <div class="ai-bbox-corner bottom-right"></div>
+          </div>
+        `;
+      }
     });
 
-    container.innerHTML = html;
+    container.innerHTML = `
+      <svg class="ai-connectors-svg" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9;">
+        ${svgConnectors}
+      </svg>
+      ${html}
+    `;
   }
 
   updateTriageTable() {

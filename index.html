@@ -292,6 +292,23 @@
 
           <!-- AI Detection Bounding Boxes Overlay (YOLOv8 Aerial Inference) -->
           <div id="ai-detections-container"></div>
+
+          <!-- UAV Tactical Overlay (Rendered strictly above detection dialogs) -->
+          <div id="uav-tactical-overlay">
+            <div id="uav-screen-reticle" class="uav-tactical-reticle" style="display: none;">
+              <div class="uav-reticle-box">
+                <div class="uav-reticle-corner tl"></div>
+                <div class="uav-reticle-corner tr"></div>
+                <div class="uav-reticle-corner bl"></div>
+                <div class="uav-reticle-corner br"></div>
+                <div class="uav-reticle-cross"></div>
+              </div>
+              <div class="uav-reticle-tag mono">
+                <span class="uav-dot"></span>
+                <span id="uav-tag-text">UAV-1 // SAR</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- PIP (Picture-In-Picture) Inset Preview Window -->

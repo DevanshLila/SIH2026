@@ -60,11 +60,20 @@ class DroneModel {
     const carbonMat = new THREE.MeshStandardMaterial({
       color: 0x1e293b,
       roughness: 0.35,
-      metalness: 0.8
+      metalness: 0.8,
+      emissive: 0x061e33,
+      emissiveIntensity: 0.35
     });
     const hull = new THREE.Mesh(hullGeo, carbonMat);
     hull.castShadow = true;
     this.group.add(hull);
+
+    // Subtle luminescent cyan avionics trim ring around fuselage
+    const trimGeo = new THREE.CylinderGeometry(0.86, 1.01, 0.04, 6);
+    const trimMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+    const trimRing = new THREE.Mesh(trimGeo, trimMat);
+    trimRing.position.y = 0;
+    this.group.add(trimRing);
 
     // Top Dome (GPS Antenna & Electronics cover with Qualcomm/Pegasus marking)
     const domeGeo = new THREE.SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -76,6 +85,14 @@ class DroneModel {
     const dome = new THREE.Mesh(domeGeo, domeMat);
     dome.position.y = 0.17;
     this.group.add(dome);
+
+    // Anti-collision strobe beacon atop dome
+    const beaconGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+    const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+    beacon.position.set(0, 0.72, 0);
+    this.group.add(beacon);
+    this.beaconLight = beacon;
 
     // GPS Mast
     const mastGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.45);
@@ -111,6 +128,14 @@ class DroneModel {
       motor.position.y = 0.08;
       motor.userData = { thermalType: 'drone_motor', baseTemp: 44.0 };
       armGroup.add(motor);
+
+      // Motor accent ring (high-contrast cyan)
+      const ringGeo = new THREE.TorusGeometry(0.20, 0.02, 6, 16);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = Math.PI / 2;
+      ringMesh.position.set(2.15, 0.17, 0);
+      armGroup.add(ringMesh);
 
       // Propeller (2-blade carbon fiber propeller)
       const propGroup = new THREE.Group();
@@ -232,6 +257,12 @@ class DroneModel {
     this.propellers.forEach(prop => {
       prop.group.rotation.y += propSpeed * prop.direction * delta;
     });
+
+    // Pulse anti-collision beacon light for prominent UAV visibility
+    if (this.beaconLight) {
+      const strobe = (Math.sin(Date.now() * 0.008) > 0.45) ? 1.0 : 0.25;
+      this.beaconLight.material.opacity = strobe;
+    }
 
     // 2. Flight physics interpolation toward target
 
