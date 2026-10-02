@@ -240,6 +240,36 @@ class TacticalGisMap {
 
     ctx.restore();
 
+    // UAV Velocity Movement Vector (Independent from heading)
+    const vel = this.drone.velocity;
+    const hSpeed = vel ? Math.hypot(vel.x, vel.z) : 0;
+    if (hSpeed > 0.12) {
+      const vLen = Math.max(14, Math.min(36, hSpeed * 3.8));
+      const dx = (vel.x / hSpeed) * vLen;
+      const dy = (vel.z / hSpeed) * vLen;
+      const endX = dScreen.x + dx;
+      const endY = dScreen.y + dy;
+
+      ctx.save();
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(dScreen.x, dScreen.y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+
+      // Arrowhead
+      const angle = Math.atan2(dy, dx);
+      ctx.fillStyle = '#00f0ff';
+      ctx.beginPath();
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(endX - 7 * Math.cos(angle - Math.PI / 6), endY - 7 * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(endX - 7 * Math.cos(angle + Math.PI / 6), endY - 7 * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
     // Map Legend / Scale Bar
     this.drawLegend(ctx, w, h);
   }

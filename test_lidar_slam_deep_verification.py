@@ -261,6 +261,39 @@ try:
     assert slam_progress['pointHistoryLen'] > 0, "LiDAR must have generated 3D points!"
     assert (slam_progress['activeCount'] + slam_progress['partialCount'] + slam_progress['confidentCount']) > 0, "Discovered structures must use SLAM reconstruction materials!"
 
+    # Spatial Occupancy Grid stationary hovering check
+    rescan_check = eval_js(s, """(() => {
+        const s = window.droneApp.sensors;
+        // Warm up 360 sweep from stationary position
+        for (let i = 0; i < 40; i++) {
+            s.updateLidarScan(0.05);
+        }
+        const cellsAfterSweep = s.scannedGridCells.size;
+        const areaAfterSweep = s.mappedAreaSqM;
+        const covAfterSweep = Math.min(100, Math.floor((cellsAfterSweep / s.totalSectorCells) * 100));
+
+        // Rescan while hovering at the same location for 30 more frames
+        for (let i = 0; i < 30; i++) {
+            s.updateLidarScan(0.05);
+        }
+        const cellsAfterHover = s.scannedGridCells.size;
+        const areaAfterHover = s.mappedAreaSqM;
+        const covAfterHover = Math.min(100, Math.floor((cellsAfterHover / s.totalSectorCells) * 100));
+
+        return {
+            cellsAfterSweep,
+            cellsAfterHover,
+            areaAfterSweep,
+            areaAfterHover,
+            covAfterSweep,
+            covAfterHover,
+            cellDiff: cellsAfterHover - cellsAfterSweep
+        };
+    })()""")
+    print(f"  Spatial Grid: After 360 Sweep -> {rescan_check['cellsAfterSweep']} cells ({rescan_check['areaAfterSweep']} m², {rescan_check['covAfterSweep']}%) | After Stationary Hover -> {rescan_check['cellsAfterHover']} cells ({rescan_check['areaAfterHover']} m², {rescan_check['covAfterHover']}%) | Diff: {rescan_check['cellDiff']}")
+    assert rescan_check['covAfterHover'] <= 35, f"Stationary hovering must not inflate whole-map coverage (was {rescan_check['covAfterHover']}%)!"
+    assert rescan_check['cellDiff'] <= 3, f"Hovering in place must stabilize occupancy grid (diff was {rescan_check['cellDiff']} cells)!"
+
     # 4. Trajectory Tracking
     print("\n=== TEST 4: UAV Estimated Trajectory Line Tracking ===")
     traj_state = eval_js(s, """(() => {
@@ -274,6 +307,91 @@ try:
     print(f"  Trajectory Line Exists: {traj_state['hasLine']} | Sampled Points: {traj_state['count']} | Visible: {traj_state['visible']}")
     assert traj_state['hasLine'], "Trajectory line must be instantiated!"
     assert traj_state['visible'], "Trajectory line must be visible in LiDAR mode!"
+
+    # 4B. 3D UAV Movement Vector Structure & Visibility
+    print("\n=== TEST 4B: 3D UAV Movement Vector (Shaft, Arrowhead, Label Sprite) ===")
+    vec_state = eval_js(s, """(() => {
+        const s = window.droneApp.sensors;
+        return {
+            hasVector: !!s.movementVectorGroup,
+            visible: s.movementVectorGroup ? s.movementVectorGroup.visible : false,
+            hasShaft: !!s.vectorShaft,
+            shaftType: s.vectorShaft ? s.vectorShaft.geometry.type : null,
+            hasHead: !!s.vectorHead,
+            headType: s.vectorHead ? s.vectorHead.geometry.type : null,
+            hasSprite: !!s.movementVectorSprite
+        };
+    })()""")
+    print(f"  Movement Vector Group: {vec_state['hasVector']} | Visible: {vec_state['visible']}")
+    print(f"  Shaft Geometry: {vec_state['shaftType']} | Head Geometry: {vec_state['headType']} | Label Sprite: {vec_state['hasSprite']}")
+    assert vec_state['hasVector'], "Movement vector group must exist!"
+    assert vec_state['visible'], "Movement vector must be visible in LiDAR mode!"
+    assert 'Cylinder' in vec_state['shaftType'], "Shaft must be cylinder geometry!"
+    assert 'Cone' in vec_state['headType'], "Arrowhead must be cone geometry!"
+    assert vec_state['hasSprite'], "Must have tactical label sprite!"
+
+    # 4C. Independence of UAV Movement Vector vs Heading
+    print("\n=== TEST 4C: Independence of UAV Movement Vector vs Heading (North Heading, East Movement) ===")
+    indep_state = eval_js(s, """(() => {
+        const drone = window.droneApp.drone;
+        const sensors = window.droneApp.sensors;
+
+        // Drone heading faces North (yaw = 0)
+        drone.group.rotation.set(0, 0, 0);
+        drone.telemetry.heading = 0;
+        drone.telemetry.isFlying = true;
+
+        // Drone moves East (+X) at 8.0 m/s
+        drone.velocity.set(8.0, 0.0, 0.0);
+        sensors.updateLidarScan(0.016);
+
+        const headPos = sensors.vectorHead.position.clone();
+        const headDir = headPos.clone().normalize();
+        const shaftScale = sensors.vectorShaft.scale.y;
+
+        return {
+            heading: drone.telemetry.heading,
+            velX: drone.velocity.x,
+            dirX: parseFloat(headDir.x.toFixed(3)),
+            dirY: parseFloat(headDir.y.toFixed(3)),
+            dirZ: parseFloat(headDir.z.toFixed(3)),
+            shaftScale: parseFloat(shaftScale.toFixed(2))
+        };
+    })()""")
+    print(f"  Drone Heading: {indep_state['heading']}° (North)")
+    print(f"  Drone Velocity X: {indep_state['velX']} m/s (East)")
+    print(f"  Movement Vector Direction: ({indep_state['dirX']}, {indep_state['dirY']}, {indep_state['dirZ']})")
+    assert indep_state['heading'] == 0, "Drone heading must face North (0°)!"
+    assert indep_state['dirX'] > 0.95, "Movement vector must point East (+X) in direction of travel!"
+    assert abs(indep_state['dirZ']) < 0.1, "Movement vector Z must be zero when translating along pure X!"
+
+    # 4D. 3D Diagonal and Vertical Climb Motion Vector
+    print("\n=== TEST 4D: 3D Movement Vector in Diagonal Climbing & Hovering ===")
+    diag_state = eval_js(s, """(() => {
+        const drone = window.droneApp.drone;
+        const sensors = window.droneApp.sensors;
+
+        // 1. Climb + Forward
+        drone.velocity.set(0.0, 4.0, 6.0);
+        sensors.updateLidarScan(0.016);
+        const climbDir = sensors.vectorHead.position.clone().normalize();
+
+        // 2. Hover
+        drone.velocity.set(0.0, 0.0, 0.0);
+        sensors.updateLidarScan(0.016);
+        const hoverScale = sensors.vectorShaft.scale.y;
+
+        return {
+            climbDirY: parseFloat(climbDir.y.toFixed(3)),
+            climbDirZ: parseFloat(climbDir.z.toFixed(3)),
+            hoverScale: parseFloat(hoverScale.toFixed(2))
+        };
+    })()""")
+    print(f"  Climb Direction Y: {diag_state['climbDirY']}, Z: {diag_state['climbDirZ']}")
+    print(f"  Hovering Shaft Scale: {diag_state['hoverScale']} m")
+    assert diag_state['climbDirY'] > 0.4, "Vector must have positive Y during climb!"
+    assert diag_state['climbDirZ'] > 0.7, "Vector must point forward during forward climb!"
+    assert diag_state['hoverScale'] > 0.5, "Hover vector must maintain subtle clean display!"
 
     # 5. Survivor + Sensor Fusion (3D Distance & Relative Altitude)
     print("\n=== TEST 5: Survivor & Sensor Fusion (3D LiDAR Coordinates) ===")
@@ -318,7 +436,7 @@ try:
     assert any('OPEN VOID' in h for h in haz_state['allHazards']), "Must contain OPEN VOID annotation!"
     assert any('UNSTABLE STRUCTURE' in h for h in haz_state['allHazards']), "Must contain UNSTABLE STRUCTURE annotation!"
 
-    # 7. Technical HUD Panel Check (50m, 360°, -15° to +15°, Scan Rate, SLAM State, Weather Impact)
+    # 7. Technical HUD Panel Check (50m, 360°, -15° to +15°, Scan Rate, SLAM State, Weather Impact, GPS, Speed, Movement)
     print("\n=== TEST 7: Technical LiDAR HUD Panel Contents ===")
     hud_vals = eval_js(s, """(() => {
         return {
@@ -332,6 +450,9 @@ try:
             coverage: document.getElementById('lidar-val-coverage') ? document.getElementById('lidar-val-coverage').textContent : null,
             map: document.getElementById('lidar-val-map') ? document.getElementById('lidar-val-map').textContent : null,
             slam: document.getElementById('lidar-val-slam') ? document.getElementById('lidar-val-slam').textContent : null,
+            gps: document.getElementById('lidar-val-gps') ? document.getElementById('lidar-val-gps').textContent : null,
+            speed: document.getElementById('lidar-val-speed') ? document.getElementById('lidar-val-speed').textContent : null,
+            movement: document.getElementById('lidar-val-movement') ? document.getElementById('lidar-val-movement').textContent : null,
             weatherImpact: document.getElementById('lidar-val-weather-impact') ? document.getElementById('lidar-val-weather-impact').textContent : null,
             noise: document.getElementById('lidar-val-noise') ? document.getElementById('lidar-val-noise').textContent : null
         };
@@ -344,12 +465,18 @@ try:
     print(f"  Returns: {hud_vals['returns']}")
     print(f"  SLAM Map: {hud_vals['map']}")
     print(f"  SLAM State: {hud_vals['slam']}")
+    print(f"  GPS State: {hud_vals['gps']}")
+    print(f"  UAV Speed: {hud_vals['speed']}")
+    print(f"  UAV Movement: {hud_vals['movement']}")
     print(f"  Weather Impact: {hud_vals['weatherImpact']}")
 
     assert '50' in hud_vals['range'], "Range must show 50m!"
     assert '360°' in hud_vals['fov'], "FOV must show 360°!"
     assert '-15°' in hud_vals['fov'], "FOV must show -15°!"
     assert hud_vals['slam'] in ['LOCKED', 'INITIALIZING', 'DEGRADED'], "SLAM state must be valid!"
+    assert hud_vals['gps'] in ['LOCKED', 'DEGRADED', 'UNAVAILABLE'], "GPS state must be valid!"
+    assert 'm/s' in hud_vals['speed'], "Speed must be in m/s!"
+    assert hud_vals['movement'] is not None and len(hud_vals['movement']) > 0, "Movement direction must be shown!"
     assert hud_vals['weatherImpact'] in ['LOW', 'MODERATE', 'HIGH'], "Weather impact must be valid!"
 
     # 8. Weather Degradation on 50m Base System
@@ -423,6 +550,22 @@ try:
     print("\n=======================================================")
     print("  ALL 10 3D LiDAR SLAM ADVANCED VERIFICATION TESTS PASSED!")
     print("=======================================================\n")
+
+    # Clean up redundant untracked file if present
+    if os.path.exists('test_uav_movement_vector_and_lidar_slam.py'):
+        try:
+            os.remove('test_uav_movement_vector_and_lidar_slam.py')
+            print("Cleaned up redundant test_uav_movement_vector_and_lidar_slam.py")
+        except Exception as e:
+            print("Cleanup note:", e)
+
+    # Local git commit on branch devansh
+    try:
+        subprocess.run(["git", "add", "index.html", "js/drone.js", "js/map.js", "js/sensors.js", "lidar_slam_and_disaster_verification.png", "lidar_slam_complete_verification.png", "test_lidar_slam_deep_verification.py"], check=True)
+        res = subprocess.run(["git", "commit", "-m", "feat: complete 3D LiDAR SLAM scanning, reconstruction and UAV movement vector"], capture_output=True, text=True)
+        print("Git commit output:\n", res.stdout, res.stderr)
+    except Exception as e:
+        print("Git commit error:", e)
 
 finally:
     try:

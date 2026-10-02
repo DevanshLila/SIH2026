@@ -47,6 +47,11 @@ class SensorFusionEngine {
     this.mappedAreaSqM = 0;
     this.slamMapPct = 0;
 
+    // Spatial grid occupancy for accurate map coverage and scanned area (Requirement 17)
+    this.scannedGridCells = new Set();
+    this.gridCellSize = 5.0; // 5m x 5m cells (25 m² each)
+    this.totalSectorCells = 2400; // ~60,000 m² total sector area
+
     // Active Laser Scan Vectors & Impact Hits (Requirement 1)
     this.maxScanRays = 72; // 8 azimuth columns x 9 elevation bands between -15° and +15°
     this.lidarScanRays = null;
@@ -140,6 +145,14 @@ class SensorFusionEngine {
     this.detectionPulses = [];
     this.detectionPulseGroup = null;
 
+    // 3D UAV Movement Vector (Requirement 10)
+    this.movementVectorGroup = null;
+    this.vectorShaft = null;
+    this.vectorHead = null;
+    this.vectorOriginMesh = null;
+    this.movementVectorSprite = null;
+    this.uavMovementVector = null;
+
     // FLIR Radiometric Thermal IR Shader Engine
     this.thermalEngine = (typeof ThermalEngine !== 'undefined')
       ? new ThermalEngine(this.drone, this.environment, this.camera, this.renderer, this.drone ? this.drone.scene : null)
@@ -214,6 +227,71 @@ class SensorFusionEngine {
     const sprite = new THREE.Sprite(spriteMat);
     sprite.scale.set(4.2, 1.3, 1.0);
     return sprite;
+  }
+
+  createMovementVectorSprite() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 280;
+    canvas.height = 110;
+    const ctx = canvas.getContext('2d');
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+
+    const spriteMat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false
+    });
+
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(3.4, 1.35, 1.0);
+    sprite.userData = { canvas, ctx, texture, lastUpdate: 0 };
+    this.updateMovementVectorSpriteText(sprite, 0, 0, 0);
+    return sprite;
+  }
+
+  updateMovementVectorSpriteText(sprite, speed, vertSpeed, heading) {
+    if (!sprite || !sprite.userData) return;
+    const { canvas, ctx, texture } = sprite.userData;
+
+    ctx.clearRect(0, 0, 280, 110);
+
+    // Dark semi-transparent tactical backdrop
+    ctx.fillStyle = 'rgba(6, 12, 24, 0.88)';
+    ctx.fillRect(0, 0, 280, 110);
+
+    // Cyan glowing border
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(2, 2, 276, 106);
+
+    // Header badge
+    ctx.fillStyle = '#00f0ff';
+    ctx.font = 'bold 18px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('VELOCITY VECTOR', 14, 28);
+
+    // Speed line
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 15px "JetBrains Mono", monospace';
+    const isHover = speed < 0.12;
+    ctx.fillText(isHover ? 'SPEED: 0.0 m/s [HOVER]' : `SPEED: ${speed.toFixed(1)} m/s`, 14, 54);
+
+    // Vertical line
+    const sign = vertSpeed >= 0 ? '+' : '';
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '14px "JetBrains Mono", monospace';
+    ctx.fillText(`VERTICAL: ${sign}${vertSpeed.toFixed(1)} m/s`, 14, 78);
+
+    // Heading line
+    ctx.fillStyle = '#7dd3fc';
+    ctx.fillText(`HEADING: ${Math.round(((heading % 360) + 360) % 360).toString().padStart(3, '0')}°`, 14, 100);
+
+    texture.needsUpdate = true;
   }
 
   clearGroundExplorationCanvas() {
@@ -510,6 +588,37 @@ class SensorFusionEngine {
     // 7. Tactical Sensor Detection Pulse Feedback
     this.detectionPulseGroup = new THREE.Group();
     this.drone.scene.add(this.detectionPulseGroup);
+
+    // 8. 3D UAV Movement Vector (Requirement 10)
+    this.movementVectorGroup = new THREE.Group();
+
+    // Origin indicator collar on UAV
+    const originGeo = new THREE.SphereGeometry(0.065, 12, 12);
+    const originMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.90, depthWrite: false });
+    this.vectorOriginMesh = new THREE.Mesh(originGeo, originMat);
+    this.movementVectorGroup.add(this.vectorOriginMesh);
+
+    // Thin cyan shaft (starts at origin and extends along +Y by default)
+    const shaftGeo = new THREE.CylinderGeometry(0.032, 0.032, 1.0, 8);
+    shaftGeo.translate(0, 0.5, 0); // base at local origin
+    const shaftMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, depthWrite: false });
+    this.vectorShaft = new THREE.Mesh(shaftGeo, shaftMat);
+    this.movementVectorGroup.add(this.vectorShaft);
+
+    // Small cyan/blue arrowhead (starts at origin and extends along +Y by default)
+    const headGeo = new THREE.ConeGeometry(0.12, 0.38, 12);
+    headGeo.translate(0, 0.19, 0); // base at local origin
+    const headMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.95, depthWrite: false });
+    this.vectorHead = new THREE.Mesh(headGeo, headMat);
+    this.movementVectorGroup.add(this.vectorHead);
+
+    // Tactical floating label
+    this.movementVectorSprite = this.createMovementVectorSprite();
+    this.movementVectorGroup.add(this.movementVectorSprite);
+
+    this.movementVectorGroup.visible = false;
+    this.drone.scene.add(this.movementVectorGroup);
+    this.uavMovementVector = this.movementVectorGroup;
   }
 
   update(delta) {
@@ -640,6 +749,7 @@ class SensorFusionEngine {
       });
 
       if (this.lidarTrajectoryLine) this.lidarTrajectoryLine.visible = true;
+      if (this.movementVectorGroup) this.movementVectorGroup.visible = (this.lidarVisMode !== 'ENVIRONMENT');
 
     } else {
       // Restore original atmosphere and meshes (preserve other sensor modes)
@@ -674,6 +784,7 @@ class SensorFusionEngine {
       });
 
       if (this.lidarTrajectoryLine) this.lidarTrajectoryLine.visible = false;
+      if (this.movementVectorGroup) this.movementVectorGroup.visible = false;
     }
   }
 
@@ -689,7 +800,7 @@ class SensorFusionEngine {
       target.visible = true;
     }
 
-    // Material progression (Requirement 2):
+    // Material progression (Requirement 2 & 7):
     // Bright cyan = newly detected / actively scanning surface (1-2 hits)
     // Cyan-blue = partially reconstructed (3-7 hits)
     // Dark grey/black = strongly reconstructed / high-confidence SLAM geometry (8+ hits)
@@ -703,28 +814,82 @@ class SensorFusionEngine {
       }
     }
 
-    // Progressively reveal architectural details in the immediate scan vicinity of the hit
+    // Strict line-of-sight: only reveal immediate architectural sub-details on the exact same hit facet (< 1.6m)
+    // Never reveal unseen opposing walls or unreached roofs without direct LiDAR ray intersection
     if (target.parent && target.parent !== this.environment.environmentGroup && target.parent !== this.drone.scene) {
       const parentPos = target.parent.position;
       target.parent.children.forEach(sibling => {
         if (sibling.isMesh && !this.slamDiscoveredMeshes.has(sibling)) {
-          let inVicinity = true;
           if (hitPoint) {
             const worldSibPos = sibling.position.clone().add(parentPos);
-            inVicinity = (worldSibPos.distanceTo(hitPoint) < 5.5);
-          }
-          if (inVicinity) {
-            if (sibling.userData._origLidarMat === undefined) {
-              sibling.userData._origLidarMat = sibling.material;
+            if (worldSibPos.distanceTo(hitPoint) < 1.6) {
+              if (sibling.userData._origLidarMat === undefined) {
+                sibling.userData._origLidarMat = sibling.material;
+              }
+              sibling.visible = (this.lidarVisMode !== 'POINT_CLOUD');
+              sibling.material = this.slamActiveMaterial;
+              this.slamDiscoveredMeshes.add(sibling);
+              this.slamMeshHits.set(sibling, 1);
+              this.slamMeshLastHit.set(sibling, now);
             }
-            sibling.visible = (this.lidarVisMode !== 'POINT_CLOUD');
-            sibling.material = this.slamActiveMaterial;
-            this.slamDiscoveredMeshes.add(sibling);
-            this.slamMeshHits.set(sibling, 1);
-            this.slamMeshLastHit.set(sibling, now);
           }
         }
       });
+    }
+  }
+
+  updateUavMovementVector(dronePos, delta) {
+    if (!this.movementVectorGroup) return;
+
+    const isLidarMode = (this.sensorMode === 'LIDAR');
+    this.movementVectorGroup.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
+    if (!this.movementVectorGroup.visible) return;
+
+    // Movement vector originates from the actual UAV position
+    this.movementVectorGroup.position.copy(dronePos);
+
+    const vel = (this.drone && this.drone.velocity) ? this.drone.velocity.clone() : new THREE.Vector3();
+    const speed = vel.length();
+    const vertSpeed = vel.y;
+    const heading = (this.drone && this.drone.telemetry && typeof this.drone.telemetry.heading === 'number')
+      ? this.drone.telemetry.heading
+      : 0;
+
+    const up = new THREE.Vector3(0, 1, 0);
+    let dir = new THREE.Vector3();
+    let totalLength = 1.0;
+    const headLength = 0.38;
+
+    if (speed >= 0.08) {
+      // True 3D movement direction based on actual velocity
+      dir.copy(vel).normalize();
+      totalLength = Math.max(1.8, Math.min(5.5, 1.2 + speed * 0.45));
+    } else {
+      // Hovering state: subtle forward indicator
+      dir.set(0, 0, 1).applyEuler(new THREE.Euler(0, this.drone.group.rotation.y, 0));
+      totalLength = 1.1;
+    }
+
+    const shaftLength = Math.max(0.15, totalLength - headLength);
+    const quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
+
+    // Update shaft geometry scale and orientation
+    this.vectorShaft.quaternion.copy(quat);
+    this.vectorShaft.scale.set(1.0, shaftLength, 1.0);
+
+    // Update arrowhead cone position and orientation
+    this.vectorHead.quaternion.copy(quat);
+    this.vectorHead.position.copy(dir.clone().multiplyScalar(shaftLength));
+
+    // Update label sprite position near arrow tip
+    const labelPos = dir.clone().multiplyScalar(totalLength + 0.3).add(new THREE.Vector3(0, 0.45, 0));
+    this.movementVectorSprite.position.copy(labelPos);
+
+    // Throttled label text update
+    const now = Date.now();
+    if (now - this.movementVectorSprite.userData.lastUpdate > 100) {
+      this.movementVectorSprite.userData.lastUpdate = now;
+      this.updateMovementVectorSpriteText(this.movementVectorSprite, speed, vertSpeed, heading);
     }
   }
 
@@ -755,6 +920,9 @@ class SensorFusionEngine {
     }
     if (this.lidarTrajectoryLine) {
       this.lidarTrajectoryLine.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
+    }
+    if (this.movementVectorGroup) {
+      this.movementVectorGroup.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
     }
 
     const lidarPanel = document.getElementById('lidar-slam-panel');
@@ -869,6 +1037,9 @@ class SensorFusionEngine {
       }
     }
 
+    // Update 3D UAV Movement Vector (Requirement 10)
+    this.updateUavMovementVector(dronePos, delta);
+
     // 3. Advance Sweep Angle (360° Continuous Horizontal Rotating Laser Fan)
     this.lidarScanAngle = (this.lidarScanAngle + 4.8 * delta) % (Math.PI * 2);
 
@@ -915,7 +1086,13 @@ class SensorFusionEngine {
 
     // 4. Realistic 3D LiDAR Raycasting & Surface Sample Generation (Requirement 1 & 4)
     const colliders = this.environment.obstacleColliders || [];
-    const origin = dronePos.clone().add(new THREE.Vector3(0, -0.45, 0));
+    const origin = new THREE.Vector3();
+    if (this.drone && this.drone.lidarPuck) {
+      this.drone.lidarPuck.getWorldPosition(origin);
+      this.drone.lidarPuck.rotation.y = this.lidarScanAngle;
+    } else {
+      origin.copy(dronePos).add(new THREE.Vector3(0, -0.52, 0));
+    }
     if (registrationJitter > 0) {
       origin.x += (Math.sin(Date.now() * 0.015) - 0.5) * registrationJitter;
       origin.z += (Math.cos(Date.now() * 0.018) - 0.5) * registrationJitter;
@@ -1014,6 +1191,11 @@ class SensorFusionEngine {
             if (!isGround && hitObj) {
               this.registerSlamStructureHit(hitObj, now, hitPoint);
             }
+
+            // Record spatial grid exploration cell (Requirement 17)
+            const cx = Math.floor(hitPoint.x / this.gridCellSize);
+            const cz = Math.floor(hitPoint.z / this.gridCellSize);
+            this.scannedGridCells.add(`${cx},${cz}`);
           }
         }
       }
@@ -1043,6 +1225,10 @@ class SensorFusionEngine {
       if (!rayEnd) {
         rayEnd = origin.clone().addScaledVector(dir, this.effectiveLidarRange);
       }
+
+      // Mark scanned empty space along ray path into spatial occupancy grid
+      const midPoint = origin.clone().lerp(rayEnd, 0.5);
+      this.scannedGridCells.add(`${Math.floor(midPoint.x / this.gridCellSize)},${Math.floor(midPoint.z / this.gridCellSize)}`);
 
       // Update Laser Vector Line (Origin -> RayEnd)
       rayPositions[r * 6]     = origin.x;
@@ -1145,16 +1331,10 @@ class SensorFusionEngine {
       });
     }
 
-    // 7. Dynamic SLAM Telemetry & Status HUD (Requirement 10)
-    let distTraveled = 0;
-    if (this.drone && this.drone.telemetry && typeof this.drone.telemetry.flightDistanceM === 'number' && !isNaN(this.drone.telemetry.flightDistanceM)) {
-      distTraveled = this.drone.telemetry.flightDistanceM;
-    } else if (window.droneApp && window.droneApp.navigator && typeof window.droneApp.navigator.searchAreaCoveredSqM === 'number') {
-      distTraveled = window.droneApp.navigator.searchAreaCoveredSqM * 0.15;
-    }
-
-    this.mappedAreaSqM = Math.min(24000, Math.max(0, Math.floor(this.pointHistory.length * 1.65 + distTraveled * 8.8)));
-    const coveragePct = Math.min(100, Math.max(14, Math.floor((this.pointHistory.length / 5500) * 86 + 14)));
+    // 7. Dynamic SLAM Telemetry & Status HUD (Requirements 17 & 18)
+    const uniqueCells = this.scannedGridCells.size;
+    this.mappedAreaSqM = uniqueCells * (this.gridCellSize * this.gridCellSize);
+    const coveragePct = Math.min(100, Math.floor((uniqueCells / this.totalSectorCells) * 100));
     this.slamMapPct = Math.min(100, Math.max(12, Math.floor((this.slamDiscoveredMeshes.size / Math.max(1, colliders.length - 2)) * 100)));
     this.lidarReturnsPct = parseFloat(((totalHitCount / this.maxScanRays) * 100).toFixed(1));
     this.lidarPointsPerSec = Math.round(this.maxScanRays * this.lidarScanRate * (this.lidarScanQuality / 100));
@@ -1173,6 +1353,9 @@ class SensorFusionEngine {
     const elCoverage = document.getElementById('lidar-val-coverage');
     const elMap = document.getElementById('lidar-val-map');
     const elSlam = document.getElementById('lidar-val-slam');
+    const elGps = document.getElementById('lidar-val-gps');
+    const elSpeed = document.getElementById('lidar-val-speed');
+    const elMovement = document.getElementById('lidar-val-movement');
     const elWeatherImpact = document.getElementById('lidar-val-weather-impact');
     const elQuality = document.getElementById('lidar-val-quality');
     const elNoise = document.getElementById('lidar-val-noise');
@@ -1192,6 +1375,66 @@ class SensorFusionEngine {
       elSlam.textContent = this.lidarSlamState;
       elSlam.className = (this.lidarSlamState === 'LOCKED') ? 'l-val green' : ((this.lidarSlamState === 'INITIALIZING') ? 'l-val yellow' : 'l-val red');
     }
+
+    // GPS Status (Requirement 12 & 18)
+    const sats = (this.drone && this.drone.telemetry && typeof this.drone.telemetry.satellites === 'number')
+      ? this.drone.telemetry.satellites
+      : 21;
+    let gpsState = 'LOCKED';
+    if (sats === 0) {
+      gpsState = 'UNAVAILABLE';
+    } else if (sats < 12) {
+      gpsState = 'DEGRADED';
+    }
+    if (elGps) {
+      elGps.textContent = gpsState;
+      elGps.className = (gpsState === 'LOCKED') ? 'l-val green' : ((gpsState === 'DEGRADED') ? 'l-val yellow' : 'l-val red');
+    }
+
+    // UAV Speed & Motion Vector Telemetry (Requirement 10 & 18)
+    const vel = (this.drone && this.drone.velocity) ? this.drone.velocity : new THREE.Vector3();
+    const speed = vel.length();
+    const vertSpeed = vel.y;
+    if (elSpeed) {
+      elSpeed.textContent = `${speed.toFixed(1)} m/s`;
+    }
+
+    let movementStr = 'HOVERING';
+    if (speed >= 0.15) {
+      const headingRad = (this.drone && this.drone.group) ? this.drone.group.rotation.y : 0;
+      const fwd = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(0, headingRad, 0));
+      const right = new THREE.Vector3(-1, 0, 0).applyEuler(new THREE.Euler(0, headingRad, 0));
+      const hVel = new THREE.Vector3(vel.x, 0, vel.z);
+      const hSpeed = hVel.length();
+
+      let vStr = '';
+      if (vertSpeed > 0.35) vStr = 'ASCENDING';
+      else if (vertSpeed < -0.35) vStr = 'DESCENDING';
+
+      let hStr = '';
+      if (hSpeed >= 0.12) {
+        const fwdDot = hVel.dot(fwd) / Math.max(0.001, hSpeed);
+        const rightDot = hVel.dot(right) / Math.max(0.001, hSpeed);
+
+        if (fwdDot > 0.65) hStr = 'FORWARD';
+        else if (fwdDot < -0.65) hStr = 'BACKWARD';
+        else if (rightDot > 0.65) hStr = 'RIGHT';
+        else if (rightDot < -0.65) hStr = 'LEFT';
+        else if (fwdDot >= 0 && rightDot >= 0) hStr = 'FORWARD-RIGHT';
+        else if (fwdDot >= 0 && rightDot < 0) hStr = 'FORWARD-LEFT';
+        else if (fwdDot < 0 && rightDot >= 0) hStr = 'BACKWARD-RIGHT';
+        else hStr = 'BACKWARD-LEFT';
+      }
+
+      if (vStr && hStr) movementStr = `${vStr} // ${hStr}`;
+      else if (vStr) movementStr = vStr;
+      else if (hStr) movementStr = hStr;
+    }
+
+    if (elMovement) {
+      elMovement.textContent = movementStr;
+    }
+
     if (elWeatherImpact) {
       elWeatherImpact.textContent = this.lidarWeatherImpact;
       elWeatherImpact.className = (this.lidarWeatherImpact === 'LOW') ? 'l-val green' : ((this.lidarWeatherImpact === 'MODERATE') ? 'l-val yellow' : 'l-val red');
@@ -1215,6 +1458,10 @@ class SensorFusionEngine {
     });
 
     const isLidar = (this.sensorMode === 'LIDAR');
+    if (this.movementVectorGroup) {
+      this.movementVectorGroup.visible = isLidar && (mode !== 'ENVIRONMENT');
+    }
+
     if (this.lidarPointCloud) {
       this.lidarPointCloud.visible = isLidar && (mode === 'COMBINED' || mode === 'POINT_CLOUD');
       if (mode === 'POINT_CLOUD') {
@@ -1281,6 +1528,7 @@ class SensorFusionEngine {
     this.slamDiscoveredMeshes.clear();
     this.slamMeshHits.clear();
     this.slamMeshLastHit.clear();
+    this.scannedGridCells.clear();
     this.clearGroundExplorationCanvas();
 
     if (this.lidarPointCloud && this.lidarPointCloud.geometry) {
@@ -1557,6 +1805,7 @@ class SensorFusionEngine {
     if (this.lidarBlindZone) this.lidarBlindZone.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
     if (this.lidarRangeRings) this.lidarRangeRings.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
     if (this.lidarTrajectoryLine) this.lidarTrajectoryLine.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
+    if (this.movementVectorGroup) this.movementVectorGroup.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
 
     if (isLidar) {
       this.setLidarEnvironmentActive(true);

@@ -288,6 +288,7 @@ class DroneModel {
       // Resting on ground
       this.group.position.y = this.groundElevation;
       this.group.rotation.set(0, this.group.rotation.y, 0);
+      this.velocity.set(0, 0, 0);
       this.telemetry.groundSpeed = 0;
       this.telemetry.verticalSpeed = 0;
       this.telemetry.pitch = 0;
