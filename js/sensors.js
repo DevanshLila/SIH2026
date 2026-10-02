@@ -205,6 +205,25 @@ class SensorFusionEngine {
     canvas.height = 80;
     const ctx = canvas.getContext('2d');
 
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false
+    });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(4.2, 1.3, 1.0);
+    sprite.userData = { canvas, ctx, texture, currentRange: 50.0 };
+    this.updateRangeBoundarySpriteText(sprite, 50.0);
+    return sprite;
+  }
+
+  updateRangeBoundarySpriteText(sprite, range) {
+    if (!sprite || !sprite.userData) return;
+    const { canvas, ctx, texture } = sprite.userData;
+
+    ctx.clearRect(0, 0, 256, 80);
     ctx.fillStyle = 'rgba(16, 6, 30, 0.88)';
     ctx.fillRect(0, 0, 256, 80);
 
@@ -215,18 +234,10 @@ class SensorFusionEngine {
     ctx.fillStyle = '#c084fc';
     ctx.font = 'bold 20px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('LiDAR RANGE: 50 m', 128, 48);
+    ctx.fillText(`LiDAR RANGE: ${Math.round(range)} m`, 128, 48);
 
-    const texture = new THREE.CanvasTexture(canvas);
-    const spriteMat = new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false
-    });
-    const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(4.2, 1.3, 1.0);
-    return sprite;
+    texture.needsUpdate = true;
+    sprite.userData.currentRange = range;
   }
 
   createMovementVectorSprite() {
@@ -708,23 +719,34 @@ class SensorFusionEngine {
       // Unscanned structures: hidden until scanned by LiDAR rays
       this.environment.environmentGroup.traverse(node => {
         if (node.isMesh) {
-          if (node.userData && (node.userData.isSurvivor || node.userData.isEmergencyBeacon)) return;
-          let p = node.parent;
-          let isSurvivor = false;
-          while (p) {
-            if (p.userData && (p.userData.isSurvivorGroup || p.userData.isSurvivor)) {
-              isSurvivor = true;
-              break;
-            }
-            p = p.parent;
-          }
-          if (isSurvivor) return;
-
           if (node.userData._origLidarMat === undefined) {
             node.userData._origLidarMat = node.material;
           }
           if (node.userData._origLidarVis === undefined) {
             node.userData._origLidarVis = node.visible;
+          }
+
+          let isSurvivor = !!(node.userData && (node.userData.isSurvivor || node.userData.isEmergencyBeacon));
+          let survivorData = null;
+          let p = node.parent;
+          while (p) {
+            if (p.userData && (p.userData.isSurvivorGroup || p.userData.isSurvivor)) {
+              isSurvivor = true;
+              if (p.userData.survivorData) survivorData = p.userData.survivorData;
+              break;
+            }
+            p = p.parent;
+          }
+
+          if (isSurvivor) {
+            // Requirement 15: Do not render a survivor visibly through rubble or walls
+            const isObstructed = survivorData ? !!survivorData.isObstructed : false;
+            if (isObstructed || !this.slamDiscoveredMeshes.has(node) || this.lidarVisMode === 'POINT_CLOUD') {
+              node.visible = false;
+            } else {
+              node.visible = true;
+            }
+            return;
           }
 
           const isGround = (node === this.environment.waterMesh || node === this.environment.channelMesh ||
@@ -817,11 +839,11 @@ class SensorFusionEngine {
     // Strict line-of-sight: only reveal immediate architectural sub-details on the exact same hit facet (< 1.6m)
     // Never reveal unseen opposing walls or unreached roofs without direct LiDAR ray intersection
     if (target.parent && target.parent !== this.environment.environmentGroup && target.parent !== this.drone.scene) {
-      const parentPos = target.parent.position;
       target.parent.children.forEach(sibling => {
         if (sibling.isMesh && !this.slamDiscoveredMeshes.has(sibling)) {
           if (hitPoint) {
-            const worldSibPos = sibling.position.clone().add(parentPos);
+            const worldSibPos = new THREE.Vector3();
+            sibling.getWorldPosition(worldSibPos);
             if (worldSibPos.distanceTo(hitPoint) < 1.6) {
               if (sibling.userData._origLidarMat === undefined) {
                 sibling.userData._origLidarMat = sibling.material;
@@ -1056,6 +1078,9 @@ class SensorFusionEngine {
     }
     if (this.lidarRangeLabel) {
       this.lidarRangeLabel.position.set(0, 1.2, -this.effectiveLidarRange);
+      if (this.lidarRangeLabel.userData && Math.abs(this.lidarRangeLabel.userData.currentRange - this.effectiveLidarRange) > 0.5) {
+        this.updateRangeBoundarySpriteText(this.lidarRangeLabel, this.effectiveLidarRange);
+      }
     }
 
     // Update Ground Exploration Canvas with Three-Zone Visualization (scanned grey space & purple blind footprint)
@@ -1254,14 +1279,17 @@ class SensorFusionEngine {
       }
     }
 
-    // Re-hide unscanned colliders so WebGL renderer does not pre-render them
+    // Re-hide unscanned colliders and enforce POINT_CLOUD mode visibility so solid meshes do not reappear
     for (let c = 0; c < colliders.length; c++) {
-      if (!this.slamDiscoveredMeshes.has(colliders[c])) {
-        const isGround = (colliders[c] === this.environment.waterMesh || colliders[c] === this.environment.channelMesh ||
-          (colliders[c].name && colliders[c].name.toLowerCase().includes('ground')) ||
-          (colliders[c].userData && colliders[c].userData.thermalType === 'road' && colliders[c].geometry && colliders[c].geometry.type === 'PlaneGeometry'));
-        if (!isGround) {
-          colliders[c].visible = false;
+      const col = colliders[c];
+      const isGround = (col === this.environment.waterMesh || col === this.environment.channelMesh ||
+        (col.name && col.name.toLowerCase().includes('ground')) ||
+        (col.userData && col.userData.thermalType === 'road' && col.geometry && col.geometry.type === 'PlaneGeometry'));
+      if (!isGround) {
+        if (!this.slamDiscoveredMeshes.has(col) || this.lidarVisMode === 'POINT_CLOUD') {
+          col.visible = false;
+        } else {
+          col.visible = true;
         }
       }
     }
@@ -1335,7 +1363,7 @@ class SensorFusionEngine {
     const uniqueCells = this.scannedGridCells.size;
     this.mappedAreaSqM = uniqueCells * (this.gridCellSize * this.gridCellSize);
     const coveragePct = Math.min(100, Math.floor((uniqueCells / this.totalSectorCells) * 100));
-    this.slamMapPct = Math.min(100, Math.max(12, Math.floor((this.slamDiscoveredMeshes.size / Math.max(1, colliders.length - 2)) * 100)));
+    this.slamMapPct = Math.min(100, Math.max(0, Math.floor((this.slamDiscoveredMeshes.size / Math.max(1, colliders.length - 2)) * 100)));
     this.lidarReturnsPct = parseFloat(((totalHitCount / this.maxScanRays) * 100).toFixed(1));
     this.lidarPointsPerSec = Math.round(this.maxScanRays * this.lidarScanRate * (this.lidarScanQuality / 100));
 
@@ -1543,6 +1571,22 @@ class SensorFusionEngine {
       this.trajectoryCount = 0;
       this.lidarTrajectoryLine.geometry.setDrawRange(0, 0);
       this.lidarTrajectoryLine.geometry.attributes.position.needsUpdate = true;
+    }
+
+    if (this.lidarImpactPoints && this.lidarImpactPoints.geometry) {
+      const imp = this.lidarImpactPoints.geometry.attributes.position.array;
+      for (let i = 0; i < this.maxScanRays; i++) {
+        imp[i * 3 + 1] = -500;
+      }
+      this.lidarImpactPoints.geometry.attributes.position.needsUpdate = true;
+    }
+
+    if (this.lidarScanRays && this.lidarScanRays.geometry) {
+      const rPos = this.lidarScanRays.geometry.attributes.position.array;
+      for (let i = 0; i < this.maxScanRays * 2; i++) {
+        rPos[i * 3 + 1] = -500;
+      }
+      this.lidarScanRays.geometry.attributes.position.needsUpdate = true;
     }
 
     if (this.sensorMode === 'LIDAR' && this.environment && this.environment.environmentGroup) {

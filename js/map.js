@@ -195,10 +195,11 @@ class TacticalGisMap {
     ctx.textBaseline = 'middle';
     ctx.fillText('HOME STATION', hScreen.x + 12, hScreen.y);
 
-    // Draw Drone Position & Sensor FOV Cone
+    // Draw Drone Position & Sensor FOV Wedge
     const dronePos = this.drone.group.position;
     const dScreen = this.worldToScreen(dronePos.x, dronePos.z);
     const yaw = this.drone.group.rotation.y;
+    const screenAngle = Math.PI / 2 - yaw;
 
     // Sensor FOV wedge
     ctx.fillStyle = 'rgba(0, 240, 255, 0.12)';
@@ -206,21 +207,21 @@ class TacticalGisMap {
     ctx.moveTo(dScreen.x, dScreen.y);
     const fovAngle = 0.6;
     const fovLen = 35;
-    ctx.arc(dScreen.x, dScreen.y, fovLen, -yaw - Math.PI / 2 - fovAngle / 2, -yaw - Math.PI / 2 + fovAngle / 2);
+    ctx.arc(dScreen.x, dScreen.y, fovLen, screenAngle - fovAngle / 2, screenAngle + fovAngle / 2);
     ctx.closePath();
     ctx.fill();
 
     // Drone Icon
     ctx.save();
     ctx.translate(dScreen.x, dScreen.y);
-    ctx.rotate(-yaw);
+    ctx.rotate(screenAngle);
 
     // Cross frame
     ctx.strokeStyle = '#00f0ff';
     ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.moveTo(-7, -7); ctx.lineTo(7, 7);
-    ctx.moveTo(7, -7); ctx.lineTo(-7, 7);
+    ctx.moveTo(-6, -6); ctx.lineTo(6, 6);
+    ctx.moveTo(6, -6); ctx.lineTo(-6, 6);
     ctx.stroke();
 
     // Center core
@@ -229,12 +230,12 @@ class TacticalGisMap {
     ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // Nose pointer
+    // Nose pointer along local heading vector
     ctx.fillStyle = '#ef4444';
     ctx.beginPath();
-    ctx.moveTo(0, -9);
-    ctx.lineTo(3, -4);
-    ctx.lineTo(-3, -4);
+    ctx.moveTo(9, 0);
+    ctx.lineTo(4, -3);
+    ctx.lineTo(4, 3);
     ctx.closePath();
     ctx.fill();
 

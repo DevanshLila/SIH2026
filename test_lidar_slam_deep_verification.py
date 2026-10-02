@@ -508,9 +508,15 @@ try:
     assert dust_w['range'] <= 26.0, "Dust range must be heavily degraded to <= 26m!"
     assert dust_w['impact'] == 'HIGH', "Dust impact must be HIGH!"
 
+    # Dynamic range boundary label check
+    range_lbl_check = eval_js(s, "window.droneApp.sensors.lidarRangeLabel.userData && window.droneApp.sensors.lidarRangeLabel.userData.currentRange <= 26.0")
+    print(f"  Range label dynamically updated for dust: {range_lbl_check}")
+    assert range_lbl_check, "Range label sprite must dynamically update to match degraded range!"
+
     # Restore clear
     eval_js(s, "window.droneApp.environment.setWeather('clear')")
     time.sleep(0.3)
+    eval_js(s, "window.droneApp.sensors.updateLidarScan(0.05)")
 
     # 9. Clean Sensor Switching (Preserve 4K Optical, FLIR Thermal, NVG, Gas Plume)
     print("\n=== TEST 9: Seamless Switching & Sensor Mode Preservation ===")
@@ -543,12 +549,43 @@ try:
     print(f"  Switched back to LIDAR: {lidar_restored}")
     assert lidar_restored, "LiDAR mode must resume seamlessly!"
 
+    # 9B. Point Cloud Mode Solid Mesh Occlusion (Bug Fix Verification)
+    print("\n=== TEST 9B: Point Cloud Visualization Mode Mesh Hiding ===")
+    eval_js(s, "window.droneApp.sensors.setLidarVisMode('POINT_CLOUD')")
+    eval_js(s, "window.droneApp.sensors.updateLidarScan(0.016)")
+    pc_mesh_hidden = eval_js(s, """(() => {
+        let solidVisible = 0;
+        window.droneApp.sensors.slamDiscoveredMeshes.forEach(m => {
+            if (m.visible) solidVisible++;
+        });
+        return solidVisible === 0;
+    })()""")
+    print(f"  POINT_CLOUD mode hides all solid discovered meshes: {pc_mesh_hidden}")
+    assert pc_mesh_hidden, "POINT_CLOUD mode must hide all solid meshes!"
+    eval_js(s, "window.droneApp.sensors.setLidarVisMode('COMBINED')")
+    eval_js(s, "window.droneApp.sensors.updateLidarScan(0.016)")
+
+    # 9C. Survivor Line-of-Sight & Rubble Occlusion in LiDAR Mode
+    print("\n=== TEST 9C: Survivor Line-of-Sight & Rubble Occlusion ===")
+    surv_hidden = eval_js(s, """(() => {
+        const s0 = window.droneApp.environment.survivors[0];
+        let meshVisible = false;
+        if (s0.meshGroup) {
+            s0.meshGroup.traverse(node => {
+                if (node.isMesh && node.visible) meshVisible = true;
+            });
+        }
+        return !meshVisible;
+    })()""")
+    print(f"  Obstructed survivor mesh hidden in LiDAR mode: {surv_hidden}")
+    assert surv_hidden, "Obstructed survivor mesh must not render through rubble in LiDAR mode!"
+
     # 10. Capture High-Resolution Verification Screenshot
     print("\n=== TEST 10: Capture High-Resolution Verification Screenshot ===")
     take_screenshot(s, 'lidar_slam_complete_verification.png')
 
     print("\n=======================================================")
-    print("  ALL 10 3D LiDAR SLAM ADVANCED VERIFICATION TESTS PASSED!")
+    print("  ALL 3D LiDAR SLAM ADVANCED VERIFICATION TESTS PASSED!")
     print("=======================================================\n")
 
     # Clean up redundant untracked file if present
@@ -558,14 +595,6 @@ try:
             print("Cleaned up redundant test_uav_movement_vector_and_lidar_slam.py")
         except Exception as e:
             print("Cleanup note:", e)
-
-    # Local git commit on branch devansh
-    try:
-        subprocess.run(["git", "add", "index.html", "js/drone.js", "js/map.js", "js/sensors.js", "lidar_slam_and_disaster_verification.png", "lidar_slam_complete_verification.png", "test_lidar_slam_deep_verification.py"], check=True)
-        res = subprocess.run(["git", "commit", "-m", "feat: complete 3D LiDAR SLAM scanning, reconstruction and UAV movement vector"], capture_output=True, text=True)
-        print("Git commit output:\n", res.stdout, res.stderr)
-    except Exception as e:
-        print("Git commit error:", e)
 
 finally:
     try:
