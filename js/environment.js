@@ -31,6 +31,42 @@ class DisasterEnvironment {
     this.floatingObjects = []; // Objects bobbing on water
     this.currentScenario = 'earthquake';
     this.isNightMode = false;
+    this.homeStationGroup = null;
+    this.homeStationPulseRing = null;
+    this.homeStationPulseTimer = 0;
+    this.homePosition = new THREE.Vector3(0, 0.75, 0);
+    this.homeRotation = new THREE.Euler(0, 0, 0, 'YXZ');
+
+    this.currentWeather = 'clear';
+    this.weatherGroup = new THREE.Group();
+    this.scene.add(this.weatherGroup);
+    this.swayingVegetation = [];
+    this.waterPuddles = [];
+    this.windSpeed = 18.0;
+    this.currentLiveWindSpeed = 18.0;
+    this.windAngle = 0; // Dynamic variable wind heading in radians
+    this.activeAnchor = new THREE.Vector3(0, 15, 0);
+
+    // Weather sub-groups for dynamic effects
+    this.rainGroup = new THREE.Group();
+    this.snowGroup = new THREE.Group();
+    this.dustGroup = new THREE.Group();
+    this.windGroup = new THREE.Group();
+    this.surfaceWetnessGroup = new THREE.Group();
+    this.snowAccumulationGroup = new THREE.Group();
+    this.dustAccumulationGroup = new THREE.Group();
+
+    this.weatherGroup.add(this.rainGroup);
+    this.weatherGroup.add(this.snowGroup);
+    this.weatherGroup.add(this.dustGroup);
+    this.weatherGroup.add(this.windGroup);
+    this.weatherGroup.add(this.surfaceWetnessGroup);
+    this.weatherGroup.add(this.snowAccumulationGroup);
+    this.weatherGroup.add(this.dustAccumulationGroup);
+
+    this.rainIntensity = 'heavy'; // 'light', 'moderate', 'heavy'
+    this.rainSplashRings = [];
+    this.initWeatherSystems();
 
     this.scene.add(this.environmentGroup);
     this.buildScenario(this.currentScenario);
@@ -63,6 +99,50 @@ class DisasterEnvironment {
     this.channelGeo = null;
     this.channelInitialZ = null;
     this.floatingObjects = [];
+    this.homeStationGroup = null;
+    this.homeStationPulseRing = null;
+    this.swayingVegetation = [];
+    this.waterPuddles = [];
+
+    if (this.surfaceWetnessGroup) {
+      while (this.surfaceWetnessGroup.children.length > 0) {
+        const obj = this.surfaceWetnessGroup.children[0];
+        this.surfaceWetnessGroup.remove(obj);
+        obj.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+            else child.material.dispose();
+          }
+        });
+      }
+    }
+    if (this.snowAccumulationGroup) {
+      while (this.snowAccumulationGroup.children.length > 0) {
+        const obj = this.snowAccumulationGroup.children[0];
+        this.snowAccumulationGroup.remove(obj);
+        obj.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+            else child.material.dispose();
+          }
+        });
+      }
+    }
+    if (this.dustAccumulationGroup) {
+      while (this.dustAccumulationGroup.children.length > 0) {
+        const obj = this.dustAccumulationGroup.children[0];
+        this.dustAccumulationGroup.remove(obj);
+        obj.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+            else child.material.dispose();
+          }
+        });
+      }
+    }
   }
 
   buildScenario(scenarioType) {
@@ -84,8 +164,219 @@ class DisasterEnvironment {
     // 3. Setup UWB Indoor Navigation Beacons (GPS-denied reference anchors)
     this.createUWBAnchors();
 
-    // 4. Update night mode lighting for new scenario
+    // 4. Create 3D Visual Home Station Marker at Launch Coordinates
+    this.createHomeStationMarker(this.homePosition, this.homeRotation);
+
+    // 5. Update night mode lighting for new scenario
     this.setNightMode(this.isNightMode);
+
+    // 6. Build scenario-specific weather overlays and re-apply active weather
+    this.buildWeatherOverlaysForScenario(scenarioType);
+    this.setWeather(this.currentWeather);
+  }
+
+  createHomeStationMarker(position, rotation) {
+    if (position) this.homePosition.copy(position);
+    if (rotation) this.homeRotation.copy(rotation);
+
+    if (this.homeStationGroup) {
+      this.environmentGroup.remove(this.homeStationGroup);
+      this.homeStationGroup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+          else child.material.dispose();
+        }
+      });
+      this.homeStationGroup = null;
+      this.homeStationPulseRing = null;
+    }
+
+    const group = new THREE.Group();
+    // In flash flood, platform surface is y=1.90m. In earthquake/gas, ground is y=0.0m.
+    const baseElevation = Math.max(0.02, this.homePosition.y - 0.72);
+    group.position.set(this.homePosition.x, baseElevation, this.homePosition.z);
+    if (this.homeRotation) {
+      group.rotation.y = this.homeRotation.y;
+    }
+
+    // 1. Octagonal Landing Pad Base Plate
+    const padGeo = new THREE.CylinderGeometry(2.6, 2.75, 0.08, 8);
+    const padMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      roughness: 0.45,
+      metalness: 0.8
+    });
+    const pad = new THREE.Mesh(padGeo, padMat);
+    pad.receiveShadow = true;
+    group.add(pad);
+
+    // 2. Tactical Outer Glowing Ring
+    const outerRingGeo = new THREE.RingGeometry(2.35, 2.58, 32);
+    const outerRingMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      side: THREE.DoubleSide
+    });
+    const outerRing = new THREE.Mesh(outerRingGeo, outerRingMat);
+    outerRing.rotation.x = -Math.PI / 2;
+    outerRing.position.y = 0.045;
+    group.add(outerRing);
+
+    // 3. Concentric Inner Accent Ring
+    const innerRingGeo = new THREE.RingGeometry(1.25, 1.42, 32);
+    const innerRingMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85
+    });
+    const innerRing = new THREE.Mesh(innerRingGeo, innerRingMat);
+    innerRing.rotation.x = -Math.PI / 2;
+    innerRing.position.y = 0.046;
+    group.add(innerRing);
+
+    // 4. Helipad 'H' and Center Crosshairs
+    const hMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+    const hStemL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 1.3), hMat);
+    hStemL.position.set(-0.45, 0.05, 0);
+    group.add(hStemL);
+    const hStemR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 1.3), hMat);
+    hStemR.position.set(0.45, 0.05, 0);
+    group.add(hStemR);
+    const hCross = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.02, 0.18), hMat);
+    hCross.position.set(0, 0.05, 0);
+    group.add(hCross);
+
+    // Cardinal tick indicators on pad edge
+    [
+      { x: 0, z: -2.1, w: 0.14, d: 0.4 },
+      { x: 0, z: 2.1, w: 0.14, d: 0.4 },
+      { x: -2.1, z: 0, w: 0.4, d: 0.14 },
+      { x: 2.1, z: 0, w: 0.4, d: 0.14 }
+    ].forEach(t => {
+      const tick = new THREE.Mesh(new THREE.BoxGeometry(t.w, 0.02, t.d), hMat);
+      tick.position.set(t.x, 0.05, t.z);
+      group.add(tick);
+    });
+
+    // 5. Pad Surface Ground Markings ("HOME STATION")
+    const padCanvas = document.createElement('canvas');
+    padCanvas.width = 512;
+    padCanvas.height = 512;
+    const pCtx = padCanvas.getContext('2d');
+    pCtx.fillStyle = 'rgba(0,0,0,0)';
+    pCtx.fillRect(0, 0, 512, 512);
+    pCtx.font = 'bold 36px "Chakra Petch", "JetBrains Mono", sans-serif';
+    pCtx.fillStyle = '#00f0ff';
+    pCtx.textAlign = 'center';
+    pCtx.textBaseline = 'middle';
+    pCtx.fillText('HOME STATION', 256, 128);
+    pCtx.fillText('BASE LAUNCH PAD', 256, 384);
+    const padTex = new THREE.CanvasTexture(padCanvas);
+    const padLabelMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.2, 4.2),
+      new THREE.MeshBasicMaterial({ map: padTex, transparent: true, side: THREE.DoubleSide })
+    );
+    padLabelMesh.rotation.x = -Math.PI / 2;
+    padLabelMesh.position.y = 0.047;
+    group.add(padLabelMesh);
+
+    // 6. Futuristic Vertical Beacon Light Column
+    const beaconGeo = new THREE.CylinderGeometry(0.35, 1.5, 14, 16, 1, true);
+    const beaconMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+    beacon.position.y = 7.0;
+    group.add(beacon);
+
+    // 7. Pulsing Sonar Ring on Landing Pad
+    const pulseGeo = new THREE.RingGeometry(0.4, 0.55, 32);
+    const pulseMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide
+    });
+    this.homeStationPulseRing = new THREE.Mesh(pulseGeo, pulseMat);
+    this.homeStationPulseRing.rotation.x = -Math.PI / 2;
+    this.homeStationPulseRing.position.y = 0.049;
+    group.add(this.homeStationPulseRing);
+
+    // 8. Perimeter LED Beacon Lights & Point Light
+    [[-1.9, -1.9], [1.9, -1.9], [-1.9, 1.9], [1.9, 1.9]].forEach(([lx, lz]) => {
+      const led = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff })
+      );
+      led.position.set(lx, 0.08, lz);
+      group.add(led);
+    });
+
+    const beaconLight = new THREE.PointLight(0x00f0ff, 1.2, 12);
+    beaconLight.position.set(0, 0.8, 0);
+    group.add(beaconLight);
+
+    // 9. Floating 3D Tactical Billboard Label: "HOME STATION"
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 512;
+    labelCanvas.height = 140;
+    const lCtx = labelCanvas.getContext('2d');
+
+    // Translucent dark tactical pill box
+    lCtx.fillStyle = 'rgba(7, 10, 18, 0.90)';
+    lCtx.strokeStyle = '#00f0ff';
+    lCtx.lineWidth = 4;
+    const bx = 16, by = 16, bw = 480, bh = 108, br = 14;
+    lCtx.beginPath();
+    lCtx.roundRect ? lCtx.roundRect(bx, by, bw, bh, br) : lCtx.rect(bx, by, bw, bh);
+    lCtx.fill();
+    lCtx.stroke();
+
+    // Corner bracket ticks
+    lCtx.fillStyle = '#00f0ff';
+    lCtx.fillRect(bx + 8, by + 8, 14, 4);
+    lCtx.fillRect(bx + 8, by + 8, 4, 14);
+    lCtx.fillRect(bx + bw - 22, by + 8, 14, 4);
+    lCtx.fillRect(bx + bw - 12, by + 8, 4, 14);
+    lCtx.fillRect(bx + 8, by + bh - 12, 14, 4);
+    lCtx.fillRect(bx + 8, by + bh - 22, 4, 14);
+    lCtx.fillRect(bx + bw - 22, by + bh - 12, 14, 4);
+    lCtx.fillRect(bx + bw - 12, by + bh - 22, 4, 14);
+
+    // Label Title
+    lCtx.font = 'bold 36px "Chakra Petch", "JetBrains Mono", sans-serif';
+    lCtx.fillStyle = '#00f0ff';
+    lCtx.textAlign = 'center';
+    lCtx.textBaseline = 'middle';
+    lCtx.shadowColor = '#00f0ff';
+    lCtx.shadowBlur = 10;
+    lCtx.fillText('⌂ HOME STATION', 256, 52);
+
+    // Subtitle
+    lCtx.font = '600 18px "JetBrains Mono", monospace';
+    lCtx.fillStyle = '#94a3b8';
+    lCtx.shadowBlur = 0;
+    lCtx.fillText('BASE LAUNCH // RECOVERY PAD', 256, 88);
+
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    const labelMat = new THREE.SpriteMaterial({
+      map: labelTexture,
+      depthTest: false,
+      transparent: true
+    });
+    const labelSprite = new THREE.Sprite(labelMat);
+    labelSprite.scale.set(4.0, 1.1, 1.0);
+    labelSprite.position.set(0, 2.5, 0);
+    group.add(labelSprite);
+
+    this.homeStationGroup = group;
+    this.environmentGroup.add(group);
+    return group;
   }
 
   createGround(type) {
@@ -104,6 +395,7 @@ class DisasterEnvironment {
       water.rotation.x = -Math.PI / 2;
       water.position.y = 1.48; // Main flood water surface elevation
       water.receiveShadow = true;
+      water.userData = { thermalType: 'water', baseTemp: 11.5 };
       this.environmentGroup.add(water);
       this.waterMesh = water;
       this.waterGeo = waterGeo;
@@ -124,6 +416,7 @@ class DisasterEnvironment {
       channel.rotation.x = -Math.PI / 2;
       channel.rotation.z = 0.22;
       channel.position.set(0, 1.49, 0);
+      channel.userData = { thermalType: 'water', baseTemp: 11.0 };
       this.environmentGroup.add(channel);
       this.channelMesh = channel;
       this.channelGeo = channelGeo;
@@ -233,6 +526,7 @@ class DisasterEnvironment {
       const ground = new THREE.Mesh(groundGeo, groundMat);
       ground.rotation.x = -Math.PI / 2;
       ground.receiveShadow = true;
+      ground.userData = { thermalType: 'road', baseTemp: 11.5 };
       this.environmentGroup.add(ground);
       this.obstacleColliders.push(ground);
 
@@ -249,6 +543,7 @@ class DisasterEnvironment {
         patch.rotation.x = -Math.PI / 2;
         patch.position.set(sp.x, 0.02, sp.z);
         patch.receiveShadow = true;
+        patch.userData = { thermalType: 'rubble', baseTemp: 16.5 };
         this.environmentGroup.add(patch);
       });
     } else {
@@ -262,6 +557,7 @@ class DisasterEnvironment {
       const ground = new THREE.Mesh(groundGeo, groundMat);
       ground.rotation.x = -Math.PI / 2;
       ground.receiveShadow = true;
+      ground.userData = { thermalType: 'road', baseTemp: 12.0 };
       this.environmentGroup.add(ground);
       this.obstacleColliders.push(ground);
 
@@ -274,6 +570,7 @@ class DisasterEnvironment {
       const yardSlab = new THREE.Mesh(new THREE.BoxGeometry(84, 0.25, 96), yardMat);
       yardSlab.position.set(-6, 0.12, -4);
       yardSlab.receiveShadow = true;
+      yardSlab.userData = { thermalType: 'generic', baseTemp: 14.5 };
       this.environmentGroup.add(yardSlab);
       this.obstacleColliders.push(yardSlab);
 
@@ -284,7 +581,67 @@ class DisasterEnvironment {
     }
   }
 
-    // =========================================================================
+  /**
+   * Constructs an individual multi-surface architectural shell (Front, Back, Left, Right walls & Roof)
+   * allowing realistic progressive LiDAR SLAM reconstruction without revealing un-scanned back/interior/roof faces.
+   */
+  createBuildingShell(group, width, height, depth, material, yOffset = 0, name = 'bldg') {
+    const wallThick = 0.45;
+    const halfW = width / 2;
+    const halfH = height / 2;
+    const halfD = depth / 2;
+    const midY = yOffset + halfH;
+
+    // 1. Front Wall (+Z)
+    const frontMesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, wallThick), material);
+    frontMesh.name = `${name}_wall_front`;
+    frontMesh.position.set(0, midY, halfD - wallThick / 2);
+    frontMesh.castShadow = true;
+    frontMesh.receiveShadow = true;
+    group.add(frontMesh);
+    this.obstacleColliders.push(frontMesh);
+
+    // 2. Back Wall (-Z)
+    const backMesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, wallThick), material);
+    backMesh.name = `${name}_wall_back`;
+    backMesh.position.set(0, midY, -halfD + wallThick / 2);
+    backMesh.castShadow = true;
+    backMesh.receiveShadow = true;
+    group.add(backMesh);
+    this.obstacleColliders.push(backMesh);
+
+    // 3. West / Left Wall (-X)
+    const sideDepth = Math.max(0.4, depth - wallThick * 2);
+    const westMesh = new THREE.Mesh(new THREE.BoxGeometry(wallThick, height, sideDepth), material);
+    westMesh.name = `${name}_wall_west`;
+    westMesh.position.set(-halfW + wallThick / 2, midY, 0);
+    westMesh.castShadow = true;
+    westMesh.receiveShadow = true;
+    group.add(westMesh);
+    this.obstacleColliders.push(westMesh);
+
+    // 4. East / Right Wall (+X)
+    const eastMesh = new THREE.Mesh(new THREE.BoxGeometry(wallThick, height, sideDepth), material);
+    eastMesh.name = `${name}_wall_east`;
+    eastMesh.position.set(halfW - wallThick / 2, midY, 0);
+    eastMesh.castShadow = true;
+    eastMesh.receiveShadow = true;
+    group.add(eastMesh);
+    this.obstacleColliders.push(eastMesh);
+
+    // 5. Roof Slab (+Y)
+    const roofMesh = new THREE.Mesh(new THREE.BoxGeometry(width, wallThick, depth), material);
+    roofMesh.name = `${name}_roof`;
+    roofMesh.position.set(0, yOffset + height - wallThick / 2, 0);
+    roofMesh.castShadow = true;
+    roofMesh.receiveShadow = true;
+    group.add(roofMesh);
+    this.obstacleColliders.push(roofMesh);
+
+    return { frontMesh, backMesh, westMesh, eastMesh, roofMesh };
+  }
+
+  // =========================================================================
   // SCENARIO 1: REALISTIC URBAN EARTHQUAKE DISASTER ENVIRONMENT (SERIOUS-GAME / SIMULATOR)
   // 50-70%+ Built Environment Destroyed: Pancaked Slabs, Leaning Towers, Sheared Walls,
   // Massive Fault Rupture Chasm, Rubble Fields, Active NDRF Responders & Tactical Overlays
@@ -677,11 +1034,7 @@ class DisasterEnvironment {
     const bldg1Group = new THREE.Group();
     bldg1Group.position.set(-28, 0, -28);
 
-    const b1Core = new THREE.Mesh(new THREE.BoxGeometry(18, 28, 16), matPaleConcrete);
-    b1Core.position.y = 14;
-    b1Core.castShadow = true;
-    bldg1Group.add(b1Core);
-    this.obstacleColliders.push(b1Core);
+    const b1Shell = this.createBuildingShell(bldg1Group, 18, 28, 16, matPaleConcrete, 0, 'b1');
 
     // Reinforced concrete floor dividing slabs on 6 floors
     for (let f = 1; f <= 5; f++) {
@@ -877,12 +1230,7 @@ class DisasterEnvironment {
     const bldg4Group = new THREE.Group();
     bldg4Group.position.set(25, 0, 10);
 
-    // Upper 4 floors mass (slumped down by 3.5m and tilted)
-    const b4Upper = new THREE.Mesh(new THREE.BoxGeometry(18, 15, 15), matMidConcrete);
-    b4Upper.position.y = 10.5;
-    b4Upper.castShadow = true;
-    bldg4Group.add(b4Upper);
-    this.obstacleColliders.push(b4Upper);
+    const b4Shell = this.createBuildingShell(bldg4Group, 18, 15, 15, matMidConcrete, 3.0, 'b4');
 
     // Continuous ribbon glass windows
     for (let f = 1; f <= 4; f++) {
@@ -1006,10 +1354,7 @@ class DisasterEnvironment {
     const bldg7Group = new THREE.Group();
     bldg7Group.position.set(14, 0, -32);
 
-    const b7Body = new THREE.Mesh(new THREE.BoxGeometry(18, 4.6, 8.5), matWallBeige);
-    b7Body.position.y = 2.3;
-    bldg7Group.add(b7Body);
-    this.obstacleColliders.push(b7Body);
+    const b7Shell = this.createBuildingShell(bldg7Group, 18, 4.6, 8.5, matWallBeige, 0, 'b7');
 
     // 3 roll-up shop shutters (dented & buckled)
     [-5.5, 0, 5.5].forEach((sx, idx) => {
@@ -1035,11 +1380,7 @@ class DisasterEnvironment {
     const bldg8Group = new THREE.Group();
     bldg8Group.position.set(38, 0, 26);
 
-    const b8Body = new THREE.Mesh(new THREE.BoxGeometry(16, 14, 13), matWallCream);
-    b8Body.position.y = 7.0;
-    b8Body.castShadow = true;
-    bldg8Group.add(b8Body);
-    this.obstacleColliders.push(b8Body);
+    const b8Shell = this.createBuildingShell(bldg8Group, 16, 14, 13, matWallCream, 0, 'b8');
 
     // Massive diagonal shear cracks
     const b8Crack = new THREE.Mesh(new THREE.BoxGeometry(0.35, 14, 0.15), matCrackedAsphalt);
@@ -1065,11 +1406,7 @@ class DisasterEnvironment {
     const bldg9Group = new THREE.Group();
     bldg9Group.position.set(-22, 0, -8);
 
-    const b9Body = new THREE.Mesh(new THREE.BoxGeometry(16, 8.5, 12), matPaleConcrete);
-    b9Body.position.y = 4.25;
-    b9Body.castShadow = true;
-    bldg9Group.add(b9Body);
-    this.obstacleColliders.push(b9Body);
+    const b9Shell = this.createBuildingShell(bldg9Group, 16, 8.5, 12, matPaleConcrete, 0, 'b9');
 
     // Collapsed triangular stone pediment
     const pediment = new THREE.Mesh(new THREE.ConeGeometry(7.5, 3.2, 4), matLightConcrete);
@@ -1098,11 +1435,7 @@ class DisasterEnvironment {
     const bldg10Group = new THREE.Group();
     bldg10Group.position.set(-28, 0, 30);
 
-    const b10Body = new THREE.Mesh(new THREE.BoxGeometry(14, 8.0, 11), matPaleConcrete);
-    b10Body.position.y = 4.0;
-    b10Body.castShadow = true;
-    bldg10Group.add(b10Body);
-    this.obstacleColliders.push(b10Body);
+    const b10Shell = this.createBuildingShell(bldg10Group, 14, 8.0, 11, matPaleConcrete, 0, 'b10');
 
     // Red Cross emblem
     const crossH = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.55, 0.1), matHazardRed);
@@ -1128,10 +1461,7 @@ class DisasterEnvironment {
     const bldg11Group = new THREE.Group();
     bldg11Group.position.set(-48, 0, -38);
 
-    const b11Body = new THREE.Mesh(new THREE.BoxGeometry(13, 5.0, 10), matWallSkyBlue);
-    b11Body.position.y = 2.5;
-    bldg11Group.add(b11Body);
-    this.obstacleColliders.push(b11Body);
+    const b11Shell = this.createBuildingShell(bldg11Group, 13, 5.0, 10, matWallSkyBlue, 0, 'b11');
 
     const b11Roof = new THREE.Mesh(new THREE.ConeGeometry(9.0, 3.4, 4), matRoofTerra);
     b11Roof.position.y = 6.4;
@@ -1149,10 +1479,7 @@ class DisasterEnvironment {
     const bldg12Group = new THREE.Group();
     bldg12Group.position.set(18, 0, 38);
 
-    const b12Body = new THREE.Mesh(new THREE.BoxGeometry(12, 4.6, 9), matWallPastelGreen);
-    b12Body.position.y = 2.3;
-    bldg12Group.add(b12Body);
-    this.obstacleColliders.push(b12Body);
+    const b12Shell = this.createBuildingShell(bldg12Group, 12, 4.6, 9, matWallPastelGreen, 0, 'b12');
 
     const b12Roof = new THREE.Mesh(new THREE.ConeGeometry(8.2, 2.8, 4), matRoofSlate);
     b12Roof.position.y = 5.9;
@@ -1174,10 +1501,7 @@ class DisasterEnvironment {
     // Building 13: South-West Ruined Apartment at (-44, 0, 38)
     const bldg13Group = new THREE.Group();
     bldg13Group.position.set(-44, 0, 38);
-    const b13Body = new THREE.Mesh(new THREE.BoxGeometry(14, 9.0, 11), matLightConcrete);
-    b13Body.position.y = 4.5;
-    bldg13Group.add(b13Body);
-    this.obstacleColliders.push(b13Body);
+    const b13Shell = this.createBuildingShell(bldg13Group, 14, 9.0, 11, matLightConcrete, 0, 'b13');
     const b13Crack = new THREE.Mesh(new THREE.BoxGeometry(0.35, 9.2, 0.15), matCrackedAsphalt);
     b13Crack.position.set(1.5, 4.5, 5.55);
     b13Crack.rotation.z = -0.35;
@@ -1187,10 +1511,7 @@ class DisasterEnvironment {
     // Building 14: South-East Ruined Commercial Block at (44, 0, 40)
     const bldg14Group = new THREE.Group();
     bldg14Group.position.set(44, 0, 40);
-    const b14Body = new THREE.Mesh(new THREE.BoxGeometry(15, 8.5, 12), matPaleConcrete);
-    b14Body.position.y = 4.25;
-    bldg14Group.add(b14Body);
-    this.obstacleColliders.push(b14Body);
+    const b14Shell = this.createBuildingShell(bldg14Group, 15, 8.5, 12, matPaleConcrete, 0, 'b14');
     this.environmentGroup.add(bldg14Group);
 
     // -------------------------------------------------------------------------
@@ -1233,11 +1554,41 @@ class DisasterEnvironment {
     this.environmentGroup.add(fallenTree);
     this.obstacleColliders.push(fallenTree);
 
+    // Standing Urban Street & Park Trees (Visibly sway with environmental wind)
+    const urbanTrees = [
+      [-18, 22, 1.1], [-8, 24, 0.95], [-22, 15, 1.05], [-32, 12, 1.0],
+      [-38, -18, 1.1], [34, 16, 0.9], [24, -24, 1.0], [-16, -32, 1.15]
+    ];
+    urbanTrees.forEach(([tx, tz, s]) => {
+      const tg = new THREE.Group();
+      tg.position.set(tx, 0, tz);
+      const th = 4.8 * s;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * s, 0.3 * s, th, 8), matTrunkBrown);
+      trunk.position.y = th / 2;
+      tg.add(trunk);
+      this.obstacleColliders.push(trunk);
+
+      const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(1.8 * s, 1), matLeafGreen);
+      crown.position.y = th + 0.8 * s;
+      tg.add(crown);
+
+      this.environmentGroup.add(tg);
+      this.swayingVegetation.push({
+        group: tg,
+        baseRotX: 0,
+        baseRotZ: 0,
+        freq: 1.4 + Math.random() * 0.6,
+        baseAmp: 0.055,
+        phase: Math.random() * Math.PI * 2
+      });
+    });
+
     // D. Scattered Vehicles (Civilian, Crushed & Overturned)
     // 1. Red Passenger Sedan Crushed under concrete slab at (4.5, 0, 15.5) (Sheltering driver SURV-EQ-11)
     const carGroup = new THREE.Group();
     carGroup.position.set(4.5, 0, 15.5);
     carGroup.rotation.y = 0.35;
+    carGroup.userData = { thermalType: 'warm_equipment' };
 
     const carChassis = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.4, 2.0), matCarRed);
     carChassis.position.y = 0.25;
@@ -1270,6 +1621,7 @@ class DisasterEnvironment {
     const carSlab = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.55, 3.4), matSlabConcrete);
     carSlab.position.set(3.0, 1.35, 15.2);
     carSlab.rotation.set(0.28, 0.15, -0.25);
+    carSlab.userData = { thermalType: 'rubble' };
     this.environmentGroup.add(carSlab);
     this.obstacleColliders.push(carSlab);
 
@@ -1277,6 +1629,7 @@ class DisasterEnvironment {
     const taxi = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.3, 2.0), matCarYellow);
     taxi.position.set(8.5, 1.0, 18.0);
     taxi.rotation.set(0.4, 0.2, 1.4); // Rolled onto side
+    taxi.userData = { thermalType: 'warm_equipment' };
     this.environmentGroup.add(taxi);
     this.obstacleColliders.push(taxi);
 
@@ -1284,6 +1637,7 @@ class DisasterEnvironment {
     const compactCar = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.1, 1.8), matCarWhite);
     compactCar.position.set(-18, 0.55, -24);
     compactCar.rotation.set(0.15, -0.4, 0.1);
+    compactCar.userData = { thermalType: 'warm_equipment' };
     this.environmentGroup.add(compactCar);
     this.obstacleColliders.push(compactCar);
 
@@ -1291,6 +1645,7 @@ class DisasterEnvironment {
     const van = new THREE.Mesh(new THREE.BoxGeometry(5.2, 2.0, 2.2), matPaleConcrete);
     van.position.set(-8, 1.0, -28);
     van.rotation.y = 0.22;
+    van.userData = { thermalType: 'warm_equipment' };
     this.environmentGroup.add(van);
     this.obstacleColliders.push(van);
 
@@ -1608,10 +1963,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-01',
       name: 'Trapped Citizen in Void (Under Slab)',
-      position: new THREE.Vector3(-6.5, 0.7, -6.0),
+      situationState: 'TRAPPED UNDER RUBBLE',
+      position: new THREE.Vector3(-6.5, 0.45, -6.0),
       posture: 'trapped',
-      temperature: 37.2,
+      temperature: 36.9,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'RUBBLE',
       clothingColor: 0xdc2626,
       vitals: 'HR: 116 bpm | Resp: 28/m | Crush Syndrome Risk | Pinned by Slab',
       gasExposure: 'Trace Methane (24 ppm)',
@@ -1621,14 +1979,17 @@ class DisasterEnvironment {
     // Survivor 2: Resident waving distress cloth from 3rd-floor sheared balcony of tilted tower (YELLOW: Urgent)
     this.addSurvivor({
       id: 'SURV-EQ-02',
-      name: 'Resident on Sheared Balcony (3rd Fl)',
+      name: 'Resident in Building Interior (3rd Fl)',
+      situationState: 'TRAPPED — BUILDING INTERIOR',
       position: new THREE.Vector3(-25.5, 14.5, -17.8),
-      posture: 'waving',
-      temperature: 36.9,
-      triage: 'YELLOW',
+      posture: 'trapped',
+      temperature: 37.1,
+      triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'BUILDING_WALL',
       clothingColor: 0xeab308,
       flagColor: 0xef4444,
-      vitals: 'HR: 94 bpm | Left Arm Laceration | Stranded at Height',
+      vitals: 'HR: 94 bpm | Left Arm Laceration | Stranded Behind Sheared Wall',
       gasExposure: 'Clean Air',
       detected: false
     });
@@ -1637,10 +1998,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-03',
       name: 'Pinned Survivor (Pancake Rubble)',
-      position: new THREE.Vector3(30.0, 1.2, -18.0),
+      situationState: 'TRAPPED UNDER RUBBLE',
+      position: new THREE.Vector3(30.0, 0.85, -18.0),
       posture: 'trapped',
-      temperature: 37.1,
+      temperature: 37.0,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'PANCAKE_SLABS',
       clothingColor: 0x2563eb,
       vitals: 'HR: 128 bpm | Thoracic Compression | Shallow Breathing',
       gasExposure: 'Trace Dust',
@@ -1651,10 +2015,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-04',
       name: 'Disoriented Citizen at Crossroads',
+      situationState: 'SURVIVOR — OPEN AREA',
       position: new THREE.Vector3(-12.0, 0.6, 20.0),
       posture: 'standing',
       temperature: 36.6,
       triage: 'GREEN',
+      isObstructed: false,
       clothingColor: 0x16a34a,
       vitals: 'Stable | Minor Abrasions | Ambulatory',
       gasExposure: 'Clean Air',
@@ -1665,10 +2031,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-05',
       name: 'Stranded Resident (Fire Escape)',
+      situationState: 'ON STAIRCASES / COLLAPSED FLOORS',
       position: new THREE.Vector3(14.6, 6.4, 12.0),
       posture: 'waving',
       temperature: 36.8,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0x9333ea,
       flagColor: 0xfacc15,
       vitals: 'HR: 88 bpm | Non-ambulatory | Staircase Obstructed',
@@ -1679,13 +2047,16 @@ class DisasterEnvironment {
     // Survivor 6: Injured survivor sitting beside collapsed boundary wall (YELLOW: Urgent)
     this.addSurvivor({
       id: 'SURV-EQ-06',
-      name: 'Injured Civilian beside Wall Rubble',
-      position: new THREE.Vector3(13.0, 0.6, -10.5),
+      name: 'Injured Civilian Partially Buried',
+      situationState: 'PARTIALLY BURIED',
+      position: new THREE.Vector3(13.0, 0.45, -10.5),
       posture: 'sitting',
       temperature: 36.7,
       triage: 'YELLOW',
+      isObstructed: true,
+      obstructionType: 'BRICK_RUBBLE',
       clothingColor: 0xea580c,
-      vitals: 'HR: 92 bpm | Suspected Tibia Fracture | Conscious',
+      vitals: 'HR: 92 bpm | Suspected Tibia Fracture | Lower Body Buried',
       gasExposure: 'Clean Air',
       detected: false
     });
@@ -1694,10 +2065,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-07',
       name: 'Elderly Resident in Sheared Room',
-      position: new THREE.Vector3(-43.0, 0.6, -11.0),
+      situationState: 'TRAPPED — BUILDING INTERIOR',
+      position: new THREE.Vector3(-43.0, 0.55, -11.0),
       posture: 'trapped',
-      temperature: 37.3,
+      temperature: 37.2,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'COLLAPSED_WALL',
       clothingColor: 0x0284c7,
       vitals: 'HR: 110 bpm | Dehydrated | Wall Collapsed Inward',
       gasExposure: 'Clean Air',
@@ -1708,10 +2082,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-08',
       name: 'Resident on Cracked Duplex Roof',
+      situationState: 'NEAR COLLAPSED STRUCTURE',
       position: new THREE.Vector3(-20.0, 11.2, -8.0),
       posture: 'waving',
       temperature: 36.9,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0xf43f5e,
       flagColor: 0xffffff,
       vitals: 'HR: 86 bpm | Structural Integrity Failing | Evacuation Needed',
@@ -1723,10 +2099,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-09',
       name: 'Child in Staircase Void',
-      position: new THREE.Vector3(-40.0, 0.55, 12.5),
+      situationState: 'TRAPPED UNDER RUBBLE',
+      position: new THREE.Vector3(-40.0, 0.45, 12.5),
       posture: 'trapped',
       temperature: 37.0,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'STAIR_RUBBLE',
       clothingColor: 0x38bdf8,
       vitals: 'HR: 122 bpm | Hypothermia Risk | Protected by Stair Stringer',
       gasExposure: 'Trace Dust',
@@ -1737,10 +2116,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-10',
       name: 'Good Samaritan in Assembly Park',
+      situationState: 'SURVIVOR — OPEN AREA',
       position: new THREE.Vector3(-15.5, 0.6, 17.5),
       posture: 'standing',
       temperature: 36.7,
       triage: 'GREEN',
+      isObstructed: false,
       clothingColor: 0xf97316,
       vitals: 'Stable | Administering First Aid to Walking Wounded',
       gasExposure: 'Clean Air',
@@ -1751,10 +2132,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-11',
       name: 'Trapped Driver in Crushed Vehicle',
+      situationState: 'PARTIALLY BURIED',
       position: new THREE.Vector3(4.5, 0.55, 16.0),
       posture: 'trapped',
       temperature: 37.4,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'CRUSHED_VEHICLE',
       clothingColor: 0x475569,
       vitals: 'HR: 134 bpm | Vehicle Roof Deformed | Hydraulic Cutters Needed',
       gasExposure: 'Fuel Vapors Present',
@@ -1765,10 +2149,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-EQ-12',
       name: 'Office Worker (Bank 4th Floor)',
+      situationState: 'VISIBLE THROUGH BROKEN WINDOWS',
       position: new THREE.Vector3(31.6, 13.6, 15.5),
       posture: 'waving',
       temperature: 36.8,
       triage: 'YELLOW',
+      isObstructed: true,
+      obstructionType: 'WINDOW_WALL',
       clothingColor: 0x10b981,
       flagColor: 0xf59e0b,
       vitals: 'HR: 90 bpm | Internal Stairwell Smoked Out | Awaiting Aerial Extraction',
@@ -1823,7 +2210,7 @@ class DisasterEnvironment {
       {
         id: 'HAZ-STRUCT-02',
         boxClass: 'unstable',
-        label: 'UNSTABLE BUILDING',
+        label: 'UNSTABLE STRUCTURE',
         sublabel: 'Metropolis Tower | Tilt: 8.0°',
         position: new THREE.Vector3(-28, 14.0, -28),
         minWidth: 72,
@@ -1847,7 +2234,7 @@ class DisasterEnvironment {
       {
         id: 'HAZ-STRUCT-04',
         boxClass: 'unstable',
-        label: 'UNSTABLE BUILDING',
+        label: 'UNSTABLE STRUCTURE',
         sublabel: 'Apex Financial | Soft-Storey',
         position: new THREE.Vector3(25, 7.5, 10),
         minWidth: 70,
@@ -1891,8 +2278,35 @@ class DisasterEnvironment {
         scaleW: 1400,
         scaleH: 900,
         triage: 'GREEN'
+      },
+      {
+        id: 'HAZ-STRUCT-08',
+        boxClass: 'obstacle',
+        label: 'OBSTACLE',
+        sublabel: 'Blocked Roadway | Rubble Barrier',
+        position: new THREE.Vector3(0, 1.4, 4),
+        minWidth: 65,
+        minHeight: 40,
+        scaleW: 1300,
+        scaleH: 850,
+        triage: 'YELLOW'
+      },
+      {
+        id: 'HAZ-STRUCT-09',
+        boxClass: 'void',
+        label: 'OPEN VOID',
+        sublabel: 'Fault Rupture Cavity | Depth -2.4m',
+        position: new THREE.Vector3(0, -0.6, -10),
+        minWidth: 65,
+        minHeight: 40,
+        scaleW: 1300,
+        scaleH: 850,
+        triage: 'YELLOW'
       }
     ];
+
+    // Update all object world matrices immediately for LiDAR SLAM raycasting
+    this.scene.updateMatrixWorld(true);
   }
 
   // =========================================================================
@@ -2603,6 +3017,14 @@ class DisasterEnvironment {
       }
 
       this.environmentGroup.add(treeGroup);
+      this.swayingVegetation.push({
+        group: treeGroup,
+        baseRotX: treeGroup.rotation.x,
+        baseRotZ: treeGroup.rotation.z,
+        freq: 1.2 + Math.random() * 0.8,
+        baseAmp: (type === 'areca_palm' ? 0.075 : (type === 'reeds' ? 0.12 : (type === 'bamboo' ? 0.08 : (type === 'banana_plant' ? 0.055 : 0.03)))),
+        phase: Math.random() * Math.PI * 2
+      });
       return treeGroup;
     };
 
@@ -2918,6 +3340,7 @@ class DisasterEnvironment {
     const truckGroup = new THREE.Group();
     truckGroup.position.set(-8, 0, 8);
     truckGroup.rotation.set(0.12, 0.45, -0.15); // Tilted in flooded ditch
+    truckGroup.userData = { thermalType: 'warm_equipment' };
 
     const matTruckBlue = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.35 });
     const matBumperYellow = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.4 });
@@ -2951,6 +3374,7 @@ class DisasterEnvironment {
     const rickshawGroup = new THREE.Group();
     rickshawGroup.position.set(6, 0.8, -10);
     rickshawGroup.rotation.set(0.2, -0.6, 0.25);
+    rickshawGroup.userData = { thermalType: 'warm_equipment' };
 
     const autoHood = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 2.6), new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 }));
     autoHood.position.y = 1.0;
@@ -2966,6 +3390,7 @@ class DisasterEnvironment {
     const carGroup = new THREE.Group();
     carGroup.position.set(16, 0.8, 8);
     carGroup.rotation.set(0.18, 0.8, -0.1);
+    carGroup.userData = { thermalType: 'warm_equipment' };
 
     const carBody = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 4.8), new THREE.MeshStandardMaterial({ color: 0x881337, roughness: 0.35 }));
     carBody.position.y = 0.9;
@@ -3149,15 +3574,17 @@ class DisasterEnvironment {
     // -------------------------------------------------------------------------
     // 8. 8 VISIBLE ASSAM FLOOD SURVIVORS (EXACT, REALISTIC, UNCLIPPED SITING)
     // -------------------------------------------------------------------------
-    // Survivor 1: Family stranded on corrugated stilt house rooftop (RED: Immediate)
+    // Survivor 1: Family stranded on corrugated stilt house rooftop (YELLOW: Urgent)
     // Placed accurately on the red corrugated tin roof slope of Stilt House 1
     this.addSurvivor({
       id: 'SURV-FL-01',
       name: 'Family on Corrugated Rooftop',
+      situationState: 'STRANDED — ROOFTOP',
       position: new THREE.Vector3(-28, 8.28, -20.0),
       posture: 'waving',
-      temperature: 36.4,
-      triage: 'RED',
+      temperature: 36.8,
+      triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0xea580c, // High-vis rescue orange
       flagColor: 0xdc2626,     // Red distress cloth
       hasLifejacket: true,
@@ -3171,14 +3598,17 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-FL-02',
       name: 'Villager on Bamboo Raft',
+      situationState: 'PARTIALLY SUBMERGED / OBSCURED',
       position: new THREE.Vector3(-26, 1.72, 14),
       floatingHost: raftGroup,
       posture: 'sitting',
       temperature: 36.6,
       triage: 'YELLOW',
+      isObstructed: true,
+      obstructionType: 'CHURNING_WATER',
       clothingColor: 0xeab308, // Mustard yellow shirt
       holdingPaddle: true,
-      vitals: 'HR: 94 bpm | Exhaustion | Adrift in Current',
+      vitals: 'HR: 94 bpm | Exhaustion | Adrift in Current & Swirling Debris',
       gasExposure: 'Clean',
       detected: false
     });
@@ -3188,10 +3618,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-FL-03',
       name: 'Displaced Civilians (School Terrace)',
+      situationState: 'STRANDED — ROOFTOP',
       position: new THREE.Vector3(24, 8.95, 18),
       posture: 'waving',
       temperature: 36.8,
       triage: 'GREEN',
+      isObstructed: false,
       clothingColor: 0xf1f5f9, // White kurta
       flagColor: 0xef4444,
       vitals: 'Stable | Signaling for Food/Water Airdrop | 4 Sheltered',
@@ -3204,10 +3636,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-FL-04',
       name: 'Trapped Citizen in Tree Canopy',
+      situationState: 'SURVIVOR — ELEVATED AREA',
       position: new THREE.Vector3(18.0, 4.95, -14.2),
       posture: 'waving',
       temperature: 36.5,
       triage: 'RED',
+      isObstructed: false,
       clothingColor: 0xdc2626, // Bright red shirt
       flagColor: 0xfacc15,
       vitals: 'HR: 126 bpm | Acute Stress | Water Surging Beneath',
@@ -3220,28 +3654,32 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-FL-05',
       name: 'Farmer on Elevated Stilt Porch',
+      situationState: 'STRANDED — BALCONY',
       position: new THREE.Vector3(-4, 3.90, -22.8),
       posture: 'standing',
       temperature: 36.9,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0x16a34a, // Green check shirt
       vitals: 'Isolated | Livestock Stranded Below | Needs Medical Kit',
       gasExposure: 'Clean',
       detected: false
     });
 
-    // Survivor 6: Stranded truck driver on submerged cab roof (RED: Immediate)
+    // Survivor 6: Stranded truck driver on submerged cab roof (YELLOW: Urgent)
     // Seated on the cab roof of the submerged Tata 1613 truck
     this.addSurvivor({
       id: 'SURV-FL-06',
       name: 'Truck Driver on Submerged Roof',
+      situationState: 'STRANDED — VEHICLE',
       position: new THREE.Vector3(-8.0, 3.65, 8.8),
       posture: 'sitting',
-      temperature: 36.7,
-      triage: 'RED',
+      temperature: 36.6,
+      triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0x2563eb, // Blue shirt & orange vest
       hasLifejacket: true,
-      vitals: 'HR: 108 bpm | Floodwater Rising Fast | Cold Exposure',
+      vitals: 'HR: 108 bpm | Floodwater Rising Fast | Stranded on Vehicle Roof',
       gasExposure: 'Clean',
       detected: false
     });
@@ -3251,10 +3689,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-FL-07',
       name: 'Displaced Resident (Clinic Balcony)',
+      situationState: 'STRANDED — BALCONY',
       position: new THREE.Vector3(28, 4.05, -1.2),
       posture: 'waving',
       temperature: 36.8,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0xec4899, // Pink / magenta saree
       flagColor: 0xffffff,
       vitals: 'HR: 88 bpm | Awaiting Ingress Boat Rescue | Dehydrated',
@@ -3267,13 +3707,32 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-FL-08',
       name: 'Evacuees on High-Ground Mound',
+      situationState: 'SURVIVOR — ELEVATED AREA',
       position: new THREE.Vector3(35.5, 2.05, -24.5),
       posture: 'waving',
       temperature: 37.0,
       triage: 'GREEN',
+      isObstructed: false,
       clothingColor: 0xd97706, // Amber attire
       flagColor: 0xfacc15,
       vitals: 'Stable | Sheltered at High Ground | Awaiting Rations',
+      gasExposure: 'Clean',
+      detected: false
+    });
+
+    // Survivor 9: Victim trapped in partially flooded masonry outpost (RED: Immediate)
+    this.addSurvivor({
+      id: 'SURV-FL-09',
+      name: 'Trapped Citizen in Flooded Outpost',
+      situationState: 'TRAPPED — FLOODED BUILDING',
+      position: new THREE.Vector3(8.0, 1.45, -5.0),
+      posture: 'trapped',
+      temperature: 37.0,
+      triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'FLOODED_STRUCTURE',
+      clothingColor: 0xdc2626,
+      vitals: 'HR: 114 bpm | Chest-Deep Water in Flooded Interior | Hypothermia Risk',
       gasExposure: 'Clean',
       detected: false
     });
@@ -3428,6 +3887,7 @@ class DisasterEnvironment {
     // 1. Massive Industrial Horizontal Steam Boiler (Central Machine)
     const boilerGroup = new THREE.Group();
     boilerGroup.position.set(-8, 3.2, -4);
+    boilerGroup.userData = { thermalType: 'hot_machinery', baseTemp: 58.0 };
 
     const boilerShell = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 9.0, 24), machineryMat);
     boilerShell.rotation.z = Math.PI / 2;
@@ -3452,6 +3912,7 @@ class DisasterEnvironment {
     // Boiler top steam dome & piping
     const steamDome = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1.4, 12), pipeSilverSteam);
     steamDome.position.set(0, 2.8, 0);
+    steamDome.userData = { thermalType: 'hot_machinery', baseTemp: 68.0 };
     boilerGroup.add(steamDome);
     factoryGroup.add(boilerGroup);
 
@@ -3790,12 +4251,14 @@ class DisasterEnvironment {
 
     // 4-Tier East-West Pipeline Run (Yellow Gas, Red Fire, Silver Steam, Blue Water)
     const pipeMats = [pipeYellowGas, pipeRedFire, pipeSilverSteam, pipeBlueWater];
+    const pipeThermals = ['warm_equipment', 'warm_equipment', 'hot_machinery', 'water'];
     pipeMats.forEach((pMat, pIdx) => {
       const pY = 5.8 + (pIdx % 2) * 0.7;
       const pZ = 12.8 + Math.floor(pIdx / 2) * 1.6;
       const pipeRun = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 46, 12), pMat);
       pipeRun.rotation.z = Math.PI / 2;
       pipeRun.position.set(-8, pY, pZ);
+      pipeRun.userData = { thermalType: pipeThermals[pIdx] };
       pipeRackGroup.add(pipeRun);
       this.obstacleColliders.push(pipeRun);
     });
@@ -3819,6 +4282,7 @@ class DisasterEnvironment {
     const severedPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 3.5, 12), pipeYellowGas);
     severedPipe.position.set(-10, 5.2, -6);
     severedPipe.rotation.set(0.45, 0.2, 0.6);
+    severedPipe.userData = { thermalType: 'hot_machinery', baseTemp: 54.0 };
     pipeRackGroup.add(severedPipe);
     this.obstacleColliders.push(severedPipe);
 
@@ -4077,10 +4541,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-01',
       name: 'Loader Collapsed Near Ruptured Tank',
+      situationState: 'IN HAZARDOUS ZONE',
       position: new THREE.Vector3(-25.0, 0.6, 11.0),
       posture: 'trapped',
       temperature: 37.4,
       triage: 'RED',
+      isObstructed: false,
       clothingColor: 0xea580c, // Safety orange coveralls
       hasHardhat: true,
       hardhatColor: 0xfacc15,
@@ -4094,10 +4560,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-02',
       name: 'Safety Warden at Exterior Gate',
+      situationState: 'SURVIVOR — SAFE ZONE',
       position: new THREE.Vector3(24.0, 0.6, 36.0),
       posture: 'standing',
       temperature: 36.7,
       triage: 'GREEN',
+      isObstructed: false,
       clothingColor: 0x16a34a, // Green safety vest
       hasHardhat: true,
       hardhatColor: 0xf8fafc, // White supervisor hardhat
@@ -4111,10 +4579,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-03',
       name: 'Technician on Silo Platform',
+      situationState: 'NEAR GAS LEAK',
       position: new THREE.Vector3(-30.0, 12.65, 27.5),
       posture: 'waving',
       temperature: 36.8,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0x0284c7, // Blue coveralls
       flagColor: 0xfacc15,
       hasHardhat: true,
@@ -4128,10 +4598,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-04',
       name: 'Truck Driver (Loading Dock)',
+      situationState: 'EVACUATION REQUIRED',
       position: new THREE.Vector3(28.0, 1.35, 14.0),
       posture: 'sitting',
       temperature: 36.9,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0x475569, // Grey jacket
       vitals: 'HR: 90 bpm | Blast Concussion | Minor Inhalation',
       gasExposure: 'Moderate (45 ppm)',
@@ -4142,10 +4614,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-05',
       name: 'Electrician (Substation Enclosure)',
+      situationState: 'IN HAZARDOUS ZONE',
       position: new THREE.Vector3(23.2, 0.6, -28.2),
       posture: 'trapped',
       temperature: 37.2,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'BUILDING_WALL',
       clothingColor: 0xd97706, // Amber flame-retardant suit
       hasHardhat: true,
       hardhatColor: 0xfacc15,
@@ -4158,10 +4633,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-06',
       name: 'Logistics Clerk (Container Yard)',
+      situationState: 'SURVIVOR — SAFE ZONE',
       position: new THREE.Vector3(36.0, 0.6, 32.0),
       posture: 'waving',
       temperature: 36.6,
       triage: 'GREEN',
+      isObstructed: false,
       clothingColor: 0xf59e0b, // Yellow shirt
       flagColor: 0xffffff,
       vitals: 'Stable | Awaiting Evacuation Order | Clear Route Available',
@@ -4174,10 +4651,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-07',
       name: 'Operator Behind Boiler (Interior)',
+      situationState: 'IN HAZARDOUS ZONE',
       position: new THREE.Vector3(-6.0, 0.6, -26.0),
       posture: 'trapped',
       temperature: 37.3,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'BUILDING_WALL',
       clothingColor: 0xe11d48, // Crimson coveralls
       hasHardhat: true,
       hardhatColor: 0xfacc15,
@@ -4190,10 +4670,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-08',
       name: 'Technician on Catwalk (Interior)',
+      situationState: 'NEAR GAS LEAK',
       position: new THREE.Vector3(4.0, 6.68, -36.0),
       posture: 'waving',
       temperature: 36.9,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0x2563eb, // Royal blue
       flagColor: 0xef4444,
       hasHardhat: true,
@@ -4207,10 +4689,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-09',
       name: 'Worker Pinned by Cable Tray (Interior)',
+      situationState: 'EVACUATION REQUIRED',
       position: new THREE.Vector3(10.5, 0.6, -21.5),
       posture: 'trapped',
       temperature: 37.0,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'PANCAKE_SLABS',
       clothingColor: 0x9333ea, // Purple uniform
       vitals: 'HR: 118 bpm | Thoracic Compression | Conscious',
       gasExposure: 'Elevated VOCs (110 ppm)',
@@ -4221,10 +4706,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-10',
       name: 'Supervisor in Control Room (Interior)',
+      situationState: 'SURVIVOR — SAFE ZONE',
       position: new THREE.Vector3(-15.0, 6.68, -35.5),
       posture: 'standing',
       temperature: 36.8,
       triage: 'YELLOW',
+      isObstructed: true,
+      obstructionType: 'BUILDING_WALL',
       clothingColor: 0xf1f5f9, // White lab coat
       hasHardhat: true,
       hardhatColor: 0xf8fafc,
@@ -4237,10 +4725,12 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-11',
       name: 'Assembly Worker by Machine (Interior)',
+      situationState: 'EVACUATION REQUIRED',
       position: new THREE.Vector3(0.0, 0.6, -18.0),
       posture: 'sitting',
       temperature: 36.7,
       triage: 'YELLOW',
+      isObstructed: false,
       clothingColor: 0x15803d, // Dark green
       vitals: 'HR: 92 bpm | Smoke Inhalation | Mild Disorientation',
       gasExposure: 'Moderate (70 ppm)',
@@ -4251,10 +4741,13 @@ class DisasterEnvironment {
     this.addSurvivor({
       id: 'SURV-GAS-12',
       name: 'Worker at Blocked Fire Exit (Interior)',
+      situationState: 'IN HAZARDOUS ZONE',
       position: new THREE.Vector3(-20.0, 0.6, -35.0),
       posture: 'trapped',
       temperature: 37.1,
       triage: 'RED',
+      isObstructed: true,
+      obstructionType: 'BUILDING_WALL',
       clothingColor: 0xdc2626, // Red
       hasHardhat: true,
       hardhatColor: 0xfacc15,
@@ -4267,6 +4760,9 @@ class DisasterEnvironment {
     this.addEmergencyBeaconLight(new THREE.Vector3(-38, 3.5, 8));
     this.addEmergencyBeaconLight(new THREE.Vector3(24, 2.5, 38));
     this.addEmergencyBeaconLight(new THREE.Vector3(30, 2.0, 14));
+
+    // Update all object world matrices immediately for LiDAR SLAM raycasting
+    this.scene.updateMatrixWorld(true);
   }
 
   // =========================================================================
@@ -4289,6 +4785,7 @@ class DisasterEnvironment {
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 0.85, 10), vestMat);
     torso.position.y = 0.85;
     torso.castShadow = true;
+    torso.userData = { thermalType: 'survivor_torso', baseTemp: 36.4, name: 'survivor_torso' };
     group.add(torso);
 
     // Reflective safety stripes on torso
@@ -4296,9 +4793,11 @@ class DisasterEnvironment {
       const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9 });
       const s1 = new THREE.Mesh(new THREE.CylinderGeometry(0.285, 0.28, 0.07, 10), stripeMat);
       s1.position.y = 1.0;
+      s1.userData = { thermalType: 'survivor_clothing', baseTemp: 26.5 };
       group.add(s1);
       const s2 = new THREE.Mesh(new THREE.CylinderGeometry(0.265, 0.26, 0.07, 10), stripeMat);
       s2.position.y = 0.68;
+      s2.userData = { thermalType: 'survivor_clothing', baseTemp: 26.5 };
       group.add(s2);
     }
 
@@ -4306,12 +4805,14 @@ class DisasterEnvironment {
     if (data.hasLifejacket) {
       const lj = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.7, 0.55), new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.5 }));
       lj.position.y = 0.9;
+      lj.userData = { thermalType: 'survivor_clothing', baseTemp: 27.0 };
       group.add(lj);
     }
 
-    // Head
+    // Head (Exposed Skin - Hot Metabolic Core)
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), skinMat);
     head.position.y = 1.45;
+    head.userData = { thermalType: 'survivor_skin', baseTemp: 37.4, name: 'survivor_head' };
     group.add(head);
 
     // Industrial Safety Hardhat if specified
@@ -4323,20 +4824,38 @@ class DisasterEnvironment {
       });
       const dome = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), hardhatMat);
       dome.position.y = 0.08;
+      dome.userData = { thermalType: 'survivor_clothing', baseTemp: 26.0 };
       head.add(dome);
       const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 14), hardhatMat);
       brim.position.y = 0.08;
+      brim.userData = { thermalType: 'survivor_clothing', baseTemp: 26.0 };
       head.add(brim);
     }
 
     // Legs
     const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.8), pantsMat);
     const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.8), pantsMat);
+    leftLeg.userData = { thermalType: 'survivor_limbs', baseTemp: 31.5, name: 'survivor_leg' };
+    rightLeg.userData = { thermalType: 'survivor_limbs', baseTemp: 31.5, name: 'survivor_leg' };
 
     // Arms
     const armMat = vestMat;
     const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.65), armMat);
     const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.65), armMat);
+    leftArm.userData = { thermalType: 'survivor_limbs', baseTemp: 32.2, name: 'survivor_arm' };
+    rightArm.userData = { thermalType: 'survivor_limbs', baseTemp: 32.2, name: 'survivor_arm' };
+
+    // Exposed hands at wrists (Hot metabolic extremities)
+    const handGeo = new THREE.SphereGeometry(0.09, 8, 8);
+    const leftHand = new THREE.Mesh(handGeo, skinMat);
+    leftHand.position.set(0, -0.36, 0);
+    leftHand.userData = { thermalType: 'survivor_skin', baseTemp: 41.5, name: 'survivor_hand' };
+    leftArm.add(leftHand);
+
+    const rightHand = new THREE.Mesh(handGeo, skinMat);
+    rightHand.position.set(0, -0.36, 0);
+    rightHand.userData = { thermalType: 'survivor_skin', baseTemp: 41.5, name: 'survivor_hand' };
+    rightArm.add(rightHand);
 
     if (data.posture === 'waving') {
       leftLeg.position.set(-0.16, 0.4, 0);
@@ -4351,6 +4870,7 @@ class DisasterEnvironment {
       const flagMat = new THREE.MeshBasicMaterial({ color: data.flagColor || 0xff2222, side: THREE.DoubleSide });
       const clothFlag = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.32), flagMat);
       clothFlag.position.set(0, 0.36, 0);
+      clothFlag.userData = { thermalType: 'survivor_clothing', baseTemp: 28.5 };
       leftArm.add(clothFlag);
     } else if (data.posture === 'trapped') {
       // Horizontal / tilted under rubble
@@ -4373,6 +4893,7 @@ class DisasterEnvironment {
         const paddle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.8), new THREE.MeshStandardMaterial({ color: 0x78350f }));
         paddle.rotation.x = 0.6;
         paddle.position.set(0.45, 0.4, 0.4);
+        paddle.userData = { thermalType: 'generic', baseTemp: 16.0 };
         group.add(paddle);
       }
     } else if (data.posture === 'crouching') {
@@ -4398,17 +4919,100 @@ class DisasterEnvironment {
     group.add(leftArm);
     group.add(rightArm);
 
-    // FLIR Radiometric Thermal IR Heat Core Sphere
-    const heatCoreGeo = new THREE.SphereGeometry(0.7, 12, 12);
+    // FLIR Radiometric Thermal IR Heat Core (Tight radiant envelope around body core)
+    const heatCoreGeo = new THREE.SphereGeometry(0.46, 12, 12);
     const heatCoreMat = new THREE.MeshBasicMaterial({
-      color: 0xffaa00,
+      color: 0xff8800,
       transparent: true,
-      opacity: 0.4,
-      wireframe: true
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending
     });
     const heatCore = new THREE.Mesh(heatCoreGeo, heatCoreMat);
     heatCore.position.y = 1.0;
+    heatCore.userData = { thermalType: 'survivor_halo', baseTemp: 36.8, name: 'survivor_halo' };
+    heatCore.visible = false; // Hidden in RGB optical mode, enabled in thermal mode
     group.add(heatCore);
+
+    // Physical 3D Obstruction & Environmental storytelling (Concrete rubble, pancaked slabs, debris, walls)
+    if (data.isObstructed) {
+      const matRubbleConcrete = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.95 });
+      const matRubbleBrick = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.9 });
+      const matDebrisDark = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 });
+
+      if (data.obstructionType === 'RUBBLE' || data.obstructionType === 'PANCAKE_SLABS' || data.obstructionType === 'STAIR_RUBBLE') {
+        // Heavy precast concrete slab tilted across survivor's lower body/torso
+        const slabGeo = new THREE.BoxGeometry(1.65, 0.22, 1.45);
+        const slab = new THREE.Mesh(slabGeo, matRubbleConcrete);
+        slab.position.set(0.12, 0.52, 0.15);
+        slab.rotation.set(0.35, 0.45, -0.22);
+        slab.castShadow = true;
+        slab.receiveShadow = true;
+        slab.userData = { thermalType: 'rubble', baseTemp: 18.0 };
+        group.add(slab);
+        this.obstacleColliders.push(slab);
+
+        // Scattered shattered masonry blocks piled over and around
+        const chunk1 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.38), matRubbleBrick);
+        chunk1.position.set(-0.25, 0.38, 0.3);
+        chunk1.rotation.set(0.2, 0.6, 0.1);
+        chunk1.userData = { thermalType: 'rubble', baseTemp: 18.0 };
+        group.add(chunk1);
+        this.obstacleColliders.push(chunk1);
+
+        const chunk2 = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.25, 0.42), matDebrisDark);
+        chunk2.position.set(0.32, 0.44, -0.2);
+        chunk2.rotation.set(-0.3, 0.4, 0.5);
+        chunk2.userData = { thermalType: 'rubble', baseTemp: 18.0 };
+        group.add(chunk2);
+        this.obstacleColliders.push(chunk2);
+      } else if (data.obstructionType === 'BRICK_RUBBLE') {
+        // Collapsed brick boundary wall rubble covering lower body
+        for (let b = 0; b < 6; b++) {
+          const brick = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.24, 0.32), matRubbleBrick);
+          brick.position.set((b % 3 - 1) * 0.32, 0.2 + Math.floor(b / 3) * 0.22, 0.25 + (b % 2) * 0.15);
+          brick.rotation.set(Math.random() * 0.4, Math.random() * 0.6, Math.random() * 0.4);
+          brick.userData = { thermalType: 'rubble', baseTemp: 18.5 };
+          group.add(brick);
+          this.obstacleColliders.push(brick);
+        }
+      } else if (data.obstructionType === 'BUILDING_WALL' || data.obstructionType === 'WINDOW_WALL' || data.obstructionType === 'COLLAPSED_WALL') {
+        // Fractured wall partition in front of victim
+        const wallFrag = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.8, 0.18), matRubbleConcrete);
+        wallFrag.position.set(0, 0.9, 0.55);
+        wallFrag.rotation.set(0.08, 0.15, -0.05);
+        wallFrag.userData = { thermalType: 'building', baseTemp: 21.0 };
+        group.add(wallFrag);
+        this.obstacleColliders.push(wallFrag);
+      } else if (data.obstructionType === 'CRUSHED_VEHICLE') {
+        // Vehicle roof deformation plate on top of survivor
+        const metalPlate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.12, 1.1), matDebrisDark);
+        metalPlate.position.set(0, 0.62, 0);
+        metalPlate.rotation.set(-0.25, 0.2, 0.15);
+        metalPlate.userData = { thermalType: 'warm_equipment', baseTemp: 22.0 };
+        group.add(metalPlate);
+        this.obstacleColliders.push(metalPlate);
+      } else if (data.obstructionType === 'CHURNING_WATER') {
+        // Floating debris / logs around partially submerged person
+        const logMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+        const log = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 2.2, 8), logMat);
+        log.rotation.z = Math.PI / 2;
+        log.position.set(0.2, 0.15, 0.45);
+        log.userData = { thermalType: 'generic', baseTemp: 17.0 };
+        group.add(log);
+        this.obstacleColliders.push(log);
+      } else if (data.obstructionType === 'FLOODED_STRUCTURE') {
+        // Submerged masonry wall shielding person inside
+        const floodWall = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.6, 0.2), matRubbleBrick);
+        floodWall.position.set(0, 0.8, 0.6);
+        floodWall.userData = { thermalType: 'building', baseTemp: 19.0 };
+        group.add(floodWall);
+        this.obstacleColliders.push(floodWall);
+      }
+
+      // Slightly elevated thermal heat core for obstructed victim so FLIR IR radiates cleanly
+      heatCore.position.y = 0.95;
+      heatCore.scale.set(1.4, 1.4, 1.4);
+    }
 
     if (data.floatingHost) {
       group.position.set(
@@ -4421,9 +5025,18 @@ class DisasterEnvironment {
       group.position.copy(data.position);
       this.environmentGroup.add(group);
     }
+    group.userData = { isSurvivorGroup: true, survivorData: data };
     data.meshGroup = group;
     data.wavingArm = (data.posture === 'waving') ? leftArm : null;
+    data.heatCore = heatCore;
+    torso.userData.isSurvivor = true;
+    head.userData.isSurvivor = true;
+    leftLeg.userData.isSurvivor = true;
+    rightLeg.userData.isSurvivor = true;
     this.obstacleColliders.push(torso);
+    this.obstacleColliders.push(head);
+    this.obstacleColliders.push(leftLeg);
+    this.obstacleColliders.push(rightLeg);
     this.survivors.push(data);
   }
 
@@ -4465,7 +5078,22 @@ class DisasterEnvironment {
     });
 
     const fireParticles = new THREE.Points(pGeo, pMat);
+    fireParticles.userData = { thermalType: 'fire', baseTemp: 480.0 };
     fireGroup.add(fireParticles);
+
+    // Radiant thermal ground transition around fire base (hot core -> warm falloff -> cool ambient)
+    const heatGlowGeo = new THREE.PlaneGeometry(10, 10, 8, 8);
+    const heatGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xff4400,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false
+    });
+    const heatGlow = new THREE.Mesh(heatGlowGeo, heatGlowMat);
+    heatGlow.rotation.x = -Math.PI / 2;
+    heatGlow.position.y = 0.05;
+    heatGlow.userData = { thermalType: 'fire_ground_dissipation', baseTemp: 75.0, name: 'fire_radiant_zone' };
+    fireGroup.add(heatGlow);
 
     this.environmentGroup.add(fireGroup);
     data.fireLight = fireLight;
@@ -4502,7 +5130,39 @@ class DisasterEnvironment {
     });
 
     const gasCloud = new THREE.Points(pGeo, pMat);
+    gasCloud.userData = { isGasCloud: true };
     gasGroup.add(gasCloud);
+
+    // Visible Damaged Infrastructure Leak Source (Ruptured industrial pipe & valve manifold)
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.75, roughness: 0.35 });
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 1.6, 12), pipeMat);
+    pipe.rotation.z = Math.PI / 3;
+    pipe.position.set(-0.3, 0.45, 0);
+    pipe.userData = { thermalType: 'metal_structural', baseTemp: 24.0 };
+    gasGroup.add(pipe);
+    this.obstacleColliders.push(pipe);
+
+    // Ruptured flange ring
+    const flangeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.25 });
+    const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.08, 12), flangeMat);
+    flange.rotation.z = Math.PI / 3;
+    flange.position.set(0.28, 0.8, 0);
+    gasGroup.add(flange);
+
+    // Affected Hazard Area Boundary Ring on Ground
+    const boundaryRadius = data.radius || 24;
+    const boundaryGeo = new THREE.RingGeometry(boundaryRadius * 0.75 - 0.14, boundaryRadius * 0.75 + 0.14, 64);
+    const boundaryMat = new THREE.MeshBasicMaterial({
+      color: 0xa855f7,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const boundaryRing = new THREE.Mesh(boundaryGeo, boundaryMat);
+    boundaryRing.rotation.x = -Math.PI / 2;
+    boundaryRing.position.y = 0.08;
+    gasGroup.add(boundaryRing);
 
     this.environmentGroup.add(gasGroup);
     data.gasCloud = gasCloud;
@@ -4592,6 +5252,37 @@ class DisasterEnvironment {
       this.uwbAnchors.push({ id: a.id, position: a.pos });
       this.obstacleColliders.push(pole);
     });
+
+    // Perimeter Buffer Greenery (Visibly sway with environmental wind)
+    const matIndTrunk = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.9 });
+    const matIndLeaf = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.75 });
+    const indTreePositions = [
+      [-42, -36, 1.1], [-30, -38, 0.95], [-16, -37, 1.05], [0, -38, 1.2],
+      [18, -37, 1.0], [32, -38, 0.9], [44, -36, 1.15], [-44, 15, 1.0], [42, 18, 1.05]
+    ];
+    indTreePositions.forEach(([tx, tz, s]) => {
+      const tg = new THREE.Group();
+      tg.position.set(tx, 0, tz);
+      const th = 5.2 * s;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * s, 0.28 * s, th, 8), matIndTrunk);
+      trunk.position.y = th / 2;
+      tg.add(trunk);
+      this.obstacleColliders.push(trunk);
+
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(2.0 * s, 4.5 * s, 8), matIndLeaf);
+      crown.position.y = th + 2.0 * s;
+      tg.add(crown);
+
+      this.environmentGroup.add(tg);
+      this.swayingVegetation.push({
+        group: tg,
+        baseRotX: 0,
+        baseRotZ: 0,
+        freq: 1.3 + Math.random() * 0.7,
+        baseAmp: 0.05,
+        phase: Math.random() * Math.PI * 2
+      });
+    });
   }
 
   setNightMode(isNight) {
@@ -4600,16 +5291,99 @@ class DisasterEnvironment {
       item.light.visible = item.alwaysActive || isNight;
       item.light.intensity = isNight ? 2.8 : (item.alwaysActive ? 1.8 : 0);
     });
+
+    // Realistic day/night lighting response for weather particle systems
+    if (this.rainGeo && this.rainLayers) {
+      const rainColors = this.rainGeo.attributes.color.array;
+      for (let i = 0; i < this.rainCount; i++) {
+        const layer = this.rainLayers[i];
+        const baseAlpha = (layer === 0 ? 0.60 : (layer === 1 ? 0.42 : 0.25));
+        if (isNight) {
+          // Soft moonlit blue-grey (faint water reflection under moonlight, non-glowing)
+          rainColors[i * 6] = 0.22 * baseAlpha;
+          rainColors[i * 6 + 1] = 0.28 * baseAlpha;
+          rainColors[i * 6 + 2] = 0.38 * baseAlpha;
+
+          rainColors[i * 6 + 3] = 0.32 * baseAlpha * 1.2;
+          rainColors[i * 6 + 4] = 0.40 * baseAlpha * 1.2;
+          rainColors[i * 6 + 5] = 0.52 * baseAlpha * 1.2;
+        } else {
+          // Daylight silver-slate rain droplet glint
+          rainColors[i * 6] = 0.55 * baseAlpha;
+          rainColors[i * 6 + 1] = 0.68 * baseAlpha;
+          rainColors[i * 6 + 2] = 0.85 * baseAlpha;
+
+          rainColors[i * 6 + 3] = 0.78 * baseAlpha * 1.2;
+          rainColors[i * 6 + 4] = 0.88 * baseAlpha * 1.2;
+          rainColors[i * 6 + 5] = 0.98 * baseAlpha * 1.2;
+        }
+      }
+      this.rainGeo.attributes.color.needsUpdate = true;
+    }
+    if (this.rainLineMat) {
+      this.rainLineMat.opacity = isNight ? 0.42 : 0.72;
+    }
+    if (this.rainSplashRings) {
+      const ringHex = isNight ? 0x253342 : 0x78909c;
+      this.rainSplashRings.forEach(r => {
+        if (r.mesh && r.mesh.material && r.mesh.material.color) {
+          r.mesh.material.color.setHex(ringHex);
+        }
+      });
+    }
+    if (this.rainSplashCrownMat && this.rainSplashCrownMat.color) {
+      this.rainSplashCrownMat.color.setHex(isNight ? 0x334155 : 0x94a3b8);
+      this.rainSplashCrownMat.opacity = isNight ? 0.35 : 0.60;
+    }
+    if (this.dustMat) {
+      this.dustMat.opacity = isNight ? 0.38 : 0.68;
+    }
+    if (this.groundDustMat) {
+      this.groundDustMat.opacity = isNight ? 0.16 : 0.28;
+      if (this.groundDustMat.color) {
+        this.groundDustMat.color.setHex(isNight ? 0x4a2e12 : 0xc49a60);
+      }
+    }
+    if (this.windStreaksMat) {
+      this.windStreaksMat.opacity = isNight ? 0.25 : 0.48;
+      if (this.windStreaksMat.color) {
+        this.windStreaksMat.color.setHex(isNight ? 0x7dd3fc : 0xd0e8ff);
+      }
+    }
+    if (this.windDebrisMat) {
+      this.windDebrisMat.opacity = isNight ? 0.45 : 0.88;
+    }
   }
 
-  update(delta) {
-    // 1. Animate survivors waving arms & sync floating host world positions
+  update(delta, cameraPos = null, dronePos = null, camera = null) {
+    // 0. Animate Home Station pulsing radar ring
+    if (this.homeStationPulseRing && this.homeStationPulseRing.parent) {
+      this.homeStationPulseTimer = (this.homeStationPulseTimer || 0) + delta * 1.5;
+      const progress = (this.homeStationPulseTimer % 2.0) / 2.0;
+      const s = 1.0 + progress * 3.2;
+      this.homeStationPulseRing.scale.set(s, s, 1);
+      if (this.homeStationPulseRing.material) {
+        this.homeStationPulseRing.material.opacity = Math.max(0, 0.75 * (1.0 - progress));
+      }
+    }
+
+    // 1. Animate survivors waving arms, sync floating host world positions & thermal scan pulse feedback
     this.survivors.forEach(s => {
       if (s.wavingArm) {
         s.wavingArm.rotation.z = 2.2 + Math.sin(Date.now() * 0.007) * 0.45;
       }
       if (s.meshGroup && s.floatingHost) {
         s.meshGroup.getWorldPosition(s.position);
+      }
+      // Sensor detection thermal hotspot intensification (Requirement 7)
+      if (s.scanPulse && s.scanPulse > 0) {
+        s.scanPulse = Math.max(0, s.scanPulse - delta * 0.75);
+        if (s.heatCore) {
+          s.heatCore.visible = true;
+          s.heatCore.material.opacity = 0.35 + s.scanPulse * 0.55;
+          const pulseScale = (s.isObstructed ? 1.4 : 1.0) * (1.0 + s.scanPulse * 0.35);
+          s.heatCore.scale.set(pulseScale, pulseScale, pulseScale);
+        }
       }
     });
 
@@ -4735,6 +5509,1234 @@ class DisasterEnvironment {
         p.geo.attributes.position.needsUpdate = true;
       }
     });
+
+    // 7. Dynamic Weather & Environmental Systems Animation
+    const time = Date.now() * 0.001;
+
+    // Anchor weather particle volume dynamically around drone or camera
+    if (cameraPos && dronePos) {
+      this.activeAnchor.set(
+        cameraPos.x * 0.35 + dronePos.x * 0.65,
+        Math.max(12, dronePos.y),
+        cameraPos.z * 0.35 + dronePos.z * 0.65
+      );
+    } else if (dronePos) {
+      this.activeAnchor.set(dronePos.x, Math.max(12, dronePos.y), dronePos.z);
+    } else if (cameraPos) {
+      this.activeAnchor.set(cameraPos.x * 0.35, 16, cameraPos.z * 0.35);
+    }
+    const anchorX = this.activeAnchor.x;
+    const anchorY = this.activeAnchor.y;
+    const anchorZ = this.activeAnchor.z;
+
+    // Dynamic wind gust speed calculation (natural turbulent oscillations)
+    let currentWind = this.windSpeed;
+    if (this.currentWeather === 'windy') {
+      currentWind = 18.0 + Math.sin(time * 1.8) * 2.4 + Math.cos(time * 0.9) * 1.2;
+    } else if (this.currentWeather === 'dust') {
+      currentWind = 22.0 + Math.sin(time * 2.2) * 1.8 + Math.cos(time * 1.1) * 0.9;
+    } else if (this.currentWeather === 'rain') {
+      currentWind = 10.5 + Math.sin(time * 1.5) * 1.8;
+    }
+    this.currentLiveWindSpeed = currentWind;
+    this.windAngle = Math.sin(time * 0.25) * 0.28; // Dynamic variable wind heading in radians
+    const windVecX = Math.cos(this.windAngle);
+    const windVecZ = Math.sin(this.windAngle);
+
+    // A. Animate Swaying Trees & Botanical Vegetation (Synchronized with Wind Vector & Gusts)
+    const isWindy = (this.currentWeather === 'windy');
+    const isDust = (this.currentWeather === 'dust');
+    const isRain = (this.currentWeather === 'rain');
+    const windFactor = isWindy ? 4.2 : (isDust ? 2.8 : (isRain ? 2.2 : 0.85));
+    const windFreq = isWindy ? 4.2 : (isDust ? 3.0 : (isRain ? 2.5 : 2.0));
+
+    for (let v = 0; v < this.swayingVegetation.length; v++) {
+      const veg = this.swayingVegetation[v];
+      const gust = Math.sin(time * veg.freq * windFreq + veg.phase) * (veg.baseAmp * windFactor);
+      const flutter = Math.sin(time * 7.5 + veg.phase) * 0.012 * windFactor;
+      veg.group.rotation.z = veg.baseRotZ + (gust + flutter) * windVecX;
+      veg.group.rotation.x = veg.baseRotX + (gust + flutter) * 0.35 * windVecZ;
+    }
+
+    // B. Animate Rain Droplets, Splash Rings & Impact Crowns
+    if (this.currentWeather === 'rain' && this.rainGeo && this.rainBasePos) {
+      const pos = this.rainGeo.attributes.position.array;
+      const basePos = this.rainBasePos;
+      const speeds = this.rainSpeeds;
+      const lengths = this.rainLengths;
+      const layers = this.rainLayers;
+
+      // Intensity multipliers
+      let speedMult = 1.0;
+      let lenMult = 1.0;
+      let activeFraction = 1.0;
+      if (this.rainIntensity === 'light') {
+        speedMult = 0.65;
+        lenMult = 0.55;
+        activeFraction = 0.40;
+      } else if (this.rainIntensity === 'moderate') {
+        speedMult = 0.85;
+        lenMult = 0.80;
+        activeFraction = 0.70;
+      } else {
+        // 'heavy' (default)
+        speedMult = 1.05;
+        lenMult = 1.15;
+        activeFraction = 1.0;
+      }
+
+      const activeCount = Math.floor(this.rainCount * activeFraction);
+      const windDriftX = currentWind * 0.35 * windVecX;
+      const windDriftZ = currentWind * 0.35 * windVecZ;
+      const tiltFactor = currentWind * 0.036;
+
+      for (let i = 0; i < this.rainCount; i++) {
+        const bIdx = i * 3;
+        const vIdx = i * 6;
+
+        if (i < activeCount) {
+          basePos[bIdx + 1] -= speeds[i] * speedMult * delta;
+          basePos[bIdx] += windDriftX * delta;
+          basePos[bIdx + 2] += windDriftZ * delta;
+
+          // Wrap boundaries around anchor
+          if (basePos[bIdx + 1] < 0.1) {
+            basePos[bIdx + 1] = anchorY + 30.0 + Math.random() * 16.0;
+            const rad = (layers[i] === 0 ? 30.0 : (layers[i] === 1 ? 75.0 : 140.0));
+            basePos[bIdx] = anchorX + (Math.random() - 0.5) * rad * 2;
+            basePos[bIdx + 2] = anchorZ + (Math.random() - 0.5) * rad * 2;
+          }
+          const maxDist = (layers[i] === 0 ? 35.0 : (layers[i] === 1 ? 80.0 : 145.0));
+          if (basePos[bIdx] > anchorX + maxDist) basePos[bIdx] -= maxDist * 2;
+          else if (basePos[bIdx] < anchorX - maxDist) basePos[bIdx] += maxDist * 2;
+          if (basePos[bIdx + 2] > anchorZ + maxDist) basePos[bIdx + 2] -= maxDist * 2;
+          else if (basePos[bIdx + 2] < anchorZ - maxDist) basePos[bIdx + 2] += maxDist * 2;
+
+          const sLen = lengths[i] * lenMult;
+          const dx = tiltFactor * windVecX * sLen;
+          const dz = tiltFactor * windVecZ * sLen;
+
+          // Top vertex
+          pos[vIdx] = basePos[bIdx] - dx * 0.3;
+          pos[vIdx + 1] = basePos[bIdx + 1] + sLen * 0.3;
+          pos[vIdx + 2] = basePos[bIdx + 2] - dz * 0.3;
+
+          // Bottom vertex (droplet head)
+          pos[vIdx + 3] = basePos[bIdx] + dx * 0.7;
+          pos[vIdx + 4] = basePos[bIdx + 1] - sLen * 0.7;
+          pos[vIdx + 5] = basePos[bIdx + 2] + dz * 0.7;
+        } else {
+          // Inactive streaks hidden under terrain
+          pos[vIdx + 1] = -50.0;
+          pos[vIdx + 4] = -50.0;
+        }
+      }
+      this.rainGeo.attributes.position.needsUpdate = true;
+
+      // Animate ground / water splash rings
+      const isFlood = (this.currentScenario === 'flash_flood');
+      for (let r = 0; r < this.rainSplashRings.length; r++) {
+        const ring = this.rainSplashRings[r];
+        ring.progress += delta * (2.6 * speedMult);
+        if (ring.progress > 1.0) {
+          ring.progress = 0;
+          ring.mesh.position.set(
+            anchorX + (Math.random() - 0.5) * 70,
+            isFlood ? 1.52 : 0.04,
+            anchorZ + (Math.random() - 0.5) * 70
+          );
+        }
+        const s = (ring.baseScale || 1.0) * (0.5 + ring.progress * 2.2);
+        ring.mesh.scale.set(s, s, 1);
+        ring.mesh.material.opacity = Math.max(0, (this.isNightMode ? 0.28 : 0.45) * Math.pow(1.0 - ring.progress, 1.4));
+      }
+
+      // Animate splash droplet crowns
+      if (this.rainSplashCrownGeo) {
+        const cPos = this.rainSplashCrownGeo.attributes.position.array;
+        const crownCount = this.rainSplashCrownGeo.attributes.position.count;
+        for (let c = 0; c < crownCount; c++) {
+          const cIdx = c * 3;
+          cPos[cIdx + 1] += (0.6 + Math.random() * 0.6) * delta;
+          if (cPos[cIdx + 1] > (isFlood ? 1.85 : 0.35)) {
+            cPos[cIdx + 1] = isFlood ? 1.52 : 0.05;
+            cPos[cIdx] = anchorX + (Math.random() - 0.5) * 70;
+            cPos[cIdx + 2] = anchorZ + (Math.random() - 0.5) * 70;
+          }
+        }
+        this.rainSplashCrownGeo.attributes.position.needsUpdate = true;
+      }
+
+      // Animate puddle specular shimmer
+      if (this.waterPuddles && this.waterPuddles.length > 0) {
+        for (let p = 0; p < this.waterPuddles.length; p++) {
+          this.waterPuddles[p].material.opacity = 0.80 + Math.sin(time * 3.5 + p) * 0.08;
+        }
+      }
+    }
+
+    // C. Animate Snowfall Particles
+    if (this.currentWeather === 'snow' && this.snowGeo) {
+      const pos = this.snowGeo.attributes.position.array;
+      const speeds = this.snowSpeeds;
+      const phases = this.snowPhases;
+      const windDriftX = (currentWind * 0.12);
+
+      for (let i = 0; i < 12000; i++) {
+        const idx = i * 3;
+        const pTime = time + phases[i];
+        pos[idx + 1] -= speeds[i] * delta;
+        pos[idx] += (Math.sin(pTime * 1.6) * 1.1 + windDriftX) * delta;
+        pos[idx + 2] += (Math.cos(pTime * 1.3) * 0.9) * delta;
+
+        if (pos[idx + 1] < 0.1) {
+          pos[idx + 1] = anchorY + 28.0 + Math.random() * 14.0;
+          pos[idx] = anchorX + (Math.random() - 0.5) * 140.0;
+          pos[idx + 2] = anchorZ + (Math.random() - 0.5) * 140.0;
+        }
+        if (pos[idx] > anchorX + 70.0) pos[idx] -= 140.0;
+        else if (pos[idx] < anchorX - 70.0) pos[idx] += 140.0;
+        if (pos[idx + 2] > anchorZ + 70.0) pos[idx + 2] -= 140.0;
+        else if (pos[idx + 2] < anchorZ - 70.0) pos[idx + 2] += 140.0;
+      }
+      this.snowGeo.attributes.position.needsUpdate = true;
+    }
+
+    // D. Animate Dust / Dust Storm Particles, Rolling Clouds & Sheets
+    if (this.currentWeather === 'dust') {
+      // 1. 10,000 Airborne Sand Grit Particles
+      if (this.dustGeo && this.dustSpeeds) {
+        const pos = this.dustGeo.attributes.position.array;
+        const speeds = this.dustSpeeds;
+        const lifts = this.dustLifts;
+        const phases = this.dustPhases;
+        const sweepBase = currentWind * 1.25;
+
+        for (let i = 0; i < 10000; i++) {
+          const idx = i * 3;
+          const sweep = sweepBase * speeds[i];
+          pos[idx] += sweep * windVecX * delta;
+          pos[idx + 2] += sweep * windVecZ * delta;
+          pos[idx + 1] += (Math.sin(time * 2.8 + phases[i]) * 1.4 + lifts[i]) * delta;
+
+          if (pos[idx + 1] < 0.15) {
+            pos[idx + 1] = 0.2 + Math.random() * 2.5;
+          } else if (pos[idx + 1] > 36.0) {
+            pos[idx + 1] = Math.pow(Math.random(), 2.2) * 12.0 + 0.2;
+          }
+          if (pos[idx] > anchorX + 70.0) {
+            pos[idx] -= 140.0;
+            pos[idx + 1] = Math.pow(Math.random(), 2.2) * 12.0 + 0.2;
+          } else if (pos[idx] < anchorX - 70.0) {
+            pos[idx] += 140.0;
+          }
+          if (pos[idx + 2] > anchorZ + 70.0) pos[idx + 2] -= 140.0;
+          else if (pos[idx + 2] < anchorZ - 70.0) pos[idx + 2] += 140.0;
+        }
+        this.dustGeo.attributes.position.needsUpdate = true;
+      }
+
+      // 2. Rolling Ground Dust Clouds with Camera Billboarding
+      if (this.groundDustClouds && this.groundDustClouds.length > 0) {
+        const sweepCloud = currentWind * 0.95;
+        const burstFactor = 1.0 + 0.35 * Math.max(0, Math.sin(time * 0.45));
+
+        for (let d = 0; d < this.groundDustClouds.length; d++) {
+          const c = this.groundDustClouds[d];
+          const sp = sweepCloud * c.speedMult * burstFactor;
+          c.mesh.position.x += sp * windVecX * delta;
+          c.mesh.position.z += sp * windVecZ * delta;
+          c.rollAngle = (c.rollAngle || 0) + (currentWind * 0.04 * c.rotSpeed) * delta;
+          c.mesh.position.y = c.baseY + Math.sin(time * 1.5 + c.phase) * 0.4;
+
+          // Wrap boundaries
+          if (c.mesh.position.x > anchorX + 75.0) c.mesh.position.x -= 150.0;
+          else if (c.mesh.position.x < anchorX - 75.0) c.mesh.position.x += 150.0;
+          if (c.mesh.position.z > anchorZ + 75.0) c.mesh.position.z -= 150.0;
+          else if (c.mesh.position.z < anchorZ - 75.0) c.mesh.position.z += 150.0;
+
+          // Camera billboarding: maintains rounded volumetric puff from every angle
+          if (camera) {
+            c.mesh.quaternion.copy(camera.quaternion);
+            c.mesh.rotateZ(c.rollAngle);
+          } else if (cameraPos) {
+            c.mesh.lookAt(cameraPos.x, c.mesh.position.y, cameraPos.z);
+            c.mesh.rotateZ(c.rollAngle);
+          }
+        }
+      }
+
+      // 3. Terrain-Hugging Moving Dust Sheets
+      if (this.groundDustSheets && this.groundDustSheets.length > 0) {
+        const sweepSheet = currentWind * 1.15;
+        for (let s = 0; s < this.groundDustSheets.length; s++) {
+          const sh = this.groundDustSheets[s];
+          sh.mesh.position.x += sweepSheet * sh.speedMult * windVecX * delta;
+          sh.mesh.position.z += sweepSheet * sh.speedMult * windVecZ * delta;
+
+          if (sh.mesh.position.x > anchorX + 70.0) sh.mesh.position.x -= 140.0;
+          else if (sh.mesh.position.x < anchorX - 70.0) sh.mesh.position.x += 140.0;
+          if (sh.mesh.position.z > anchorZ + 70.0) sh.mesh.position.z -= 140.0;
+          else if (sh.mesh.position.z < anchorZ - 70.0) sh.mesh.position.z += 140.0;
+        }
+      }
+    }
+
+    // E. Animate Wind Debris & Curved Aerodynamic Streamlines
+    if (this.currentWeather === 'windy') {
+      // 1. Tumbling Debris & Leaves
+      if (this.windDebrisGeo && this.windDebrisSpeeds) {
+        const pos = this.windDebrisGeo.attributes.position.array;
+        const speeds = this.windDebrisSpeeds;
+        const phases = this.windDebrisPhases;
+        const sweep = currentWind * 1.35;
+
+        for (let i = 0; i < 450; i++) {
+          const idx = i * 3;
+          const sp = sweep * speeds[i];
+          pos[idx] += sp * windVecX * delta + Math.sin(time * 3.8 + phases[i]) * 1.2 * delta;
+          pos[idx + 2] += sp * windVecZ * delta + Math.cos(time * 3.2 + phases[i]) * 1.2 * delta;
+          pos[idx + 1] += (Math.sin(time * 4.5 + phases[i] * 1.5) * 1.8) * delta;
+
+          if (pos[idx + 1] < 0.2) pos[idx + 1] = 0.4 + Math.random() * 4.0;
+          if (pos[idx] > anchorX + 65.0) {
+            pos[idx] -= 130.0;
+            pos[idx + 1] = 0.4 + Math.random() * 8.0;
+          } else if (pos[idx] < anchorX - 65.0) {
+            pos[idx] += 130.0;
+          }
+          if (pos[idx + 2] > anchorZ + 65.0) pos[idx + 2] -= 130.0;
+          else if (pos[idx + 2] < anchorZ - 65.0) pos[idx + 2] += 130.0;
+        }
+        this.windDebrisGeo.attributes.position.needsUpdate = true;
+      }
+
+      // 2. Curved Aerodynamic Streamlines
+      if (this.windStreaksGeo && this.streamlineMeta) {
+        const pos = this.windStreaksGeo.attributes.position.array;
+        const segs = this.streamlineSegmentsPerLine;
+        const sweepBase = currentWind * 1.75;
+
+        for (let i = 0; i < this.streamlineCount; i++) {
+          const meta = this.streamlineMeta[i];
+          meta.x += sweepBase * (meta.speed / 25.0) * windVecX * delta;
+          meta.z += sweepBase * (meta.speed / 25.0) * windVecZ * delta;
+
+          // Wrap boundaries with re-randomization
+          if (meta.x > anchorX + 75.0) {
+            meta.x = anchorX - 75.0 - Math.random() * 20.0;
+            meta.z = anchorZ + (Math.random() - 0.5) * 130.0;
+            meta.y = Math.random() < 0.65 ? (1.5 + Math.random() * 8.5) : (10.0 + Math.random() * 18.0);
+          } else if (meta.x < anchorX - 75.0) {
+            meta.x = anchorX + 75.0 + Math.random() * 20.0;
+            meta.z = anchorZ + (Math.random() - 0.5) * 130.0;
+            meta.y = Math.random() < 0.65 ? (1.5 + Math.random() * 8.5) : (10.0 + Math.random() * 18.0);
+          }
+          if (meta.z > anchorZ + 75.0) {
+            meta.z = anchorZ - 75.0;
+            meta.x = anchorX + (Math.random() - 0.5) * 130.0;
+          } else if (meta.z < anchorZ - 75.0) {
+            meta.z = anchorZ + 75.0;
+            meta.x = anchorX + (Math.random() - 0.5) * 130.0;
+          }
+
+          // Calculate aerodynamic curved segments
+          const len = meta.length;
+          const pPerpX = -windVecZ;
+          const pPerpZ = windVecX;
+
+          for (let s = 0; s < segs; s++) {
+            const vIdx = (i * segs + s) * 6;
+            const t0 = s / segs;
+            const t1 = (s + 1) / segs;
+
+            // Longitudinal along wind
+            const l0 = (t0 - 0.5) * len;
+            const l1 = (t1 - 0.5) * len;
+
+            // Lateral & vertical aerodynamic curvature
+            const w0 = Math.sin(time * meta.waveFreq + meta.phase + t0 * Math.PI) * meta.waveAmp;
+            const w1 = Math.sin(time * meta.waveFreq + meta.phase + t1 * Math.PI) * meta.waveAmp;
+            const vWave0 = Math.sin(time * 2.0 + meta.phase + t0 * 2.0) * (meta.waveAmp * 0.35);
+            const vWave1 = Math.sin(time * 2.0 + meta.phase + t1 * 2.0) * (meta.waveAmp * 0.35);
+
+            pos[vIdx] = meta.x + l0 * windVecX + w0 * pPerpX;
+            pos[vIdx + 1] = meta.y + vWave0;
+            pos[vIdx + 2] = meta.z + l0 * windVecZ + w0 * pPerpZ;
+
+            pos[vIdx + 3] = meta.x + l1 * windVecX + w1 * pPerpX;
+            pos[vIdx + 4] = meta.y + vWave1;
+            pos[vIdx + 5] = meta.z + l1 * windVecZ + w1 * pPerpZ;
+          }
+        }
+        this.windStreaksGeo.attributes.position.needsUpdate = true;
+      }
+    }
+
+    // F. Aerodynamic Gas Plume Wind Interaction
+    if (this.currentScenario === 'chemical_fire' && this.hazards) {
+      const isGasWindy = (this.currentWeather === 'windy' || this.currentWeather === 'dust');
+      this.hazards.forEach(h => {
+        if (h.gasCloud) {
+          h.driftSpeedX = isGasWindy ? 4.2 : 1.4;
+          h.spreadX = isGasWindy ? 4.8 : 2.5;
+        }
+      });
+    }
+  }
+
+  setRainIntensity(level) {
+    if (level === 'light' || level === 'moderate' || level === 'heavy') {
+      this.rainIntensity = level;
+    }
+  }
+
+  setWeather(weather) {
+    this.currentWeather = weather;
+    if (this.rainGroup) this.rainGroup.visible = (weather === 'rain');
+    if (this.snowGroup) this.snowGroup.visible = (weather === 'snow');
+    if (this.dustGroup) this.dustGroup.visible = (weather === 'dust');
+    if (this.windGroup) this.windGroup.visible = (weather === 'windy');
+    if (this.surfaceWetnessGroup) this.surfaceWetnessGroup.visible = (weather === 'rain');
+    if (this.snowAccumulationGroup) this.snowAccumulationGroup.visible = (weather === 'snow');
+    if (this.dustAccumulationGroup) this.dustAccumulationGroup.visible = (weather === 'dust');
+
+    if (weather === 'windy') {
+      this.windSpeed = 18.0;
+    } else if (weather === 'dust') {
+      this.windSpeed = 22.0;
+    } else if (weather === 'rain') {
+      this.windSpeed = 10.0;
+    } else if (weather === 'snow') {
+      this.windSpeed = 4.5;
+    } else if (weather === 'cloudy') {
+      this.windSpeed = 6.0;
+    } else {
+      this.windSpeed = 3.5;
+    }
+
+    if (this.hazards) {
+      const isGasWindy = (weather === 'windy' || weather === 'dust');
+      this.hazards.forEach(h => {
+        if (h.gasCloud) {
+          h.driftSpeedX = isGasWindy ? 4.2 : 1.4;
+          h.spreadX = isGasWindy ? 4.8 : 2.5;
+        }
+      });
+    }
+
+    this.resetWeatherParticlesAroundAnchor();
+  }
+
+  resetWeatherParticlesAroundAnchor() {
+    const ax = this.activeAnchor ? this.activeAnchor.x : 0;
+    const ay = this.activeAnchor ? this.activeAnchor.y : 15;
+    const az = this.activeAnchor ? this.activeAnchor.z : 0;
+
+    if (this.currentWeather === 'rain' && this.rainBasePos) {
+      for (let i = 0; i < this.rainCount; i++) {
+        const rad = (this.rainLayers[i] === 0 ? 30.0 : (this.rainLayers[i] === 1 ? 75.0 : 140.0));
+        this.rainBasePos[i * 3] = ax + (Math.random() - 0.5) * rad * 2;
+        this.rainBasePos[i * 3 + 1] = Math.random() * (ay + 35);
+        this.rainBasePos[i * 3 + 2] = az + (Math.random() - 0.5) * rad * 2;
+      }
+    } else if (this.currentWeather === 'snow' && this.snowGeo) {
+      const pos = this.snowGeo.attributes.position.array;
+      for (let i = 0; i < 12000; i++) {
+        pos[i * 3] = ax + (Math.random() - 0.5) * 140;
+        pos[i * 3 + 1] = Math.random() * (ay + 32);
+        pos[i * 3 + 2] = az + (Math.random() - 0.5) * 140;
+      }
+      this.snowGeo.attributes.position.needsUpdate = true;
+    } else if (this.currentWeather === 'dust' && this.dustGeo) {
+      const pos = this.dustGeo.attributes.position.array;
+      for (let i = 0; i < 10000; i++) {
+        pos[i * 3] = ax + (Math.random() - 0.5) * 140;
+        pos[i * 3 + 1] = Math.pow(Math.random(), 2.2) * 14.0 + 0.2;
+        pos[i * 3 + 2] = az + (Math.random() - 0.5) * 140;
+      }
+      this.dustGeo.attributes.position.needsUpdate = true;
+    } else if (this.currentWeather === 'windy' && this.windDebrisGeo) {
+      const pos = this.windDebrisGeo.attributes.position.array;
+      for (let i = 0; i < 450; i++) {
+        pos[i * 3] = ax + (Math.random() - 0.5) * 130;
+        pos[i * 3 + 1] = 0.4 + Math.random() * 8.0;
+        pos[i * 3 + 2] = az + (Math.random() - 0.5) * 130;
+      }
+      this.windDebrisGeo.attributes.position.needsUpdate = true;
+    }
+  }
+
+  initWeatherSystems() {
+    const snowTex = this.generateSnowflakeTexture();
+
+    // 1. Realistic Multi-Depth Rain Streaks System (14,000 streaks with near/mid/far layers)
+    this.rainCount = 14000;
+    this.rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(this.rainCount * 2 * 3);
+    const rainColors = new Float32Array(this.rainCount * 2 * 3);
+    this.rainBasePos = new Float32Array(this.rainCount * 3);
+    this.rainSpeeds = new Float32Array(this.rainCount);
+    this.rainLengths = new Float32Array(this.rainCount);
+    this.rainLayers = new Uint8Array(this.rainCount);
+
+    for (let i = 0; i < this.rainCount; i++) {
+      let radius, length, speed, layer, baseAlpha;
+      if (i < 2000) {
+        radius = 28.0;
+        length = 2.4 + Math.random() * 1.6;
+        speed = 52.0 + Math.random() * 15.0;
+        layer = 0;
+        baseAlpha = 0.55;
+      } else if (i < 8000) {
+        radius = 70.0;
+        length = 1.3 + Math.random() * 1.0;
+        speed = 42.0 + Math.random() * 12.0;
+        layer = 1;
+        baseAlpha = 0.40;
+      } else {
+        radius = 140.0;
+        length = 0.65 + Math.random() * 0.65;
+        speed = 34.0 + Math.random() * 10.0;
+        layer = 2;
+        baseAlpha = 0.24;
+      }
+
+      this.rainLayers[i] = layer;
+      this.rainLengths[i] = length;
+      this.rainSpeeds[i] = speed;
+
+      const rx = (Math.random() - 0.5) * radius * 2;
+      const ry = Math.random() * 48;
+      const rz = (Math.random() - 0.5) * radius * 2;
+
+      this.rainBasePos[i * 3] = rx;
+      this.rainBasePos[i * 3 + 1] = ry;
+      this.rainBasePos[i * 3 + 2] = rz;
+
+      // Top vertex
+      rainPositions[i * 6] = rx;
+      rainPositions[i * 6 + 1] = ry + length * 0.3;
+      rainPositions[i * 6 + 2] = rz;
+
+      // Bottom vertex
+      rainPositions[i * 6 + 3] = rx;
+      rainPositions[i * 6 + 4] = ry - length * 0.7;
+      rainPositions[i * 6 + 5] = rz;
+
+      // Vertex colors: top softer, bottom denser droplet head
+      rainColors[i * 6] = 0.65 * baseAlpha;
+      rainColors[i * 6 + 1] = 0.78 * baseAlpha;
+      rainColors[i * 6 + 2] = 0.92 * baseAlpha;
+
+      rainColors[i * 6 + 3] = 0.82 * baseAlpha * 1.3;
+      rainColors[i * 6 + 4] = 0.92 * baseAlpha * 1.3;
+      rainColors[i * 6 + 5] = 1.00 * baseAlpha * 1.3;
+    }
+
+    this.rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    this.rainGeo.setAttribute('color', new THREE.BufferAttribute(rainColors, 3));
+
+    this.rainLineMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false,
+      fog: true
+    });
+    this.rainParticles = new THREE.LineSegments(this.rainGeo, this.rainLineMat);
+    this.rainGroup.add(this.rainParticles);
+
+    // 60 Ground/Water Rain Splash Rings (delicate, realistic expanding ripples)
+    this.rainSplashRings = [];
+    const ringGeo = new THREE.RingGeometry(0.02, 0.08, 16);
+    for (let r = 0; r < 60; r++) {
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x78909c,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = -Math.PI / 2;
+      ringMesh.position.set((Math.random() - 0.5) * 70, 0.04, (Math.random() - 0.5) * 70);
+      this.rainGroup.add(ringMesh);
+      this.rainSplashRings.push({
+        mesh: ringMesh,
+        progress: Math.random(),
+        baseScale: 0.8 + Math.random() * 0.8
+      });
+    }
+
+    // 60 Ground splash droplet crowns (tiny upward popping spray specks)
+    this.rainSplashCrownGeo = new THREE.BufferGeometry();
+    const crownPos = new Float32Array(60 * 3);
+    for (let c = 0; c < 60; c++) {
+      crownPos[c * 3] = (Math.random() - 0.5) * 70;
+      crownPos[c * 3 + 1] = 0.05 + Math.random() * 0.25;
+      crownPos[c * 3 + 2] = (Math.random() - 0.5) * 70;
+    }
+    this.rainSplashCrownGeo.setAttribute('position', new THREE.BufferAttribute(crownPos, 3));
+    this.rainSplashCrownMat = new THREE.PointsMaterial({
+      size: 0.75,
+      color: 0x94a3b8,
+      transparent: true,
+      opacity: 0.60,
+      depthWrite: false,
+      fog: true
+    });
+    this.rainSplashCrowns = new THREE.Points(this.rainSplashCrownGeo, this.rainSplashCrownMat);
+    this.rainGroup.add(this.rainSplashCrowns);
+
+    // 2. Snow Particle System (12,000 crystalline flakes)
+    this.snowGeo = new THREE.BufferGeometry();
+    const snowPos = new Float32Array(12000 * 3);
+    this.snowSpeeds = new Float32Array(12000);
+    this.snowPhases = new Float32Array(12000);
+    for (let i = 0; i < 12000; i++) {
+      snowPos[i * 3] = (Math.random() - 0.5) * 140;
+      snowPos[i * 3 + 1] = Math.random() * 45;
+      snowPos[i * 3 + 2] = (Math.random() - 0.5) * 140;
+      this.snowSpeeds[i] = 2.8 + Math.random() * 2.2;
+      this.snowPhases[i] = Math.random() * Math.PI * 2;
+    }
+    this.snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+    const snowMat = new THREE.PointsMaterial({
+      size: 2.8,
+      map: snowTex,
+      transparent: true,
+      opacity: 0.88,
+      blending: THREE.NormalBlending,
+      depthWrite: false,
+      fog: true
+    });
+    this.snowParticles = new THREE.Points(this.snowGeo, snowMat);
+    this.snowGroup.add(this.snowParticles);
+
+    // 3. Dust / Dust Storm Particle System (10,000 airborne sand grit particles with varied colors & velocities)
+    this.dustGeo = new THREE.BufferGeometry();
+    const dustPos = new Float32Array(10000 * 3);
+    const dustCol = new Float32Array(10000 * 3);
+    this.dustSpeeds = new Float32Array(10000);
+    this.dustLifts = new Float32Array(10000);
+    this.dustPhases = new Float32Array(10000);
+
+    const sandColors = [
+      [0.86, 0.72, 0.50],
+      [0.78, 0.60, 0.38],
+      [0.68, 0.48, 0.28],
+      [0.92, 0.84, 0.70],
+      [0.58, 0.40, 0.22]
+    ];
+
+    for (let i = 0; i < 10000; i++) {
+      dustPos[i * 3] = (Math.random() - 0.5) * 140;
+      dustPos[i * 3 + 1] = Math.pow(Math.random(), 2.2) * 14.0 + 0.2;
+      dustPos[i * 3 + 2] = (Math.random() - 0.5) * 140;
+
+      const c = sandColors[Math.floor(Math.random() * sandColors.length)];
+      dustCol[i * 3] = c[0];
+      dustCol[i * 3 + 1] = c[1];
+      dustCol[i * 3 + 2] = c[2];
+
+      this.dustSpeeds[i] = 0.85 + Math.random() * 0.55;
+      this.dustLifts[i] = (Math.random() - 0.35) * 1.2;
+      this.dustPhases[i] = Math.random() * Math.PI * 2;
+    }
+    this.dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    this.dustGeo.setAttribute('color', new THREE.BufferAttribute(dustCol, 3));
+
+    const dustGrainTex = this.generateDustGrainTexture();
+    this.dustMat = new THREE.PointsMaterial({
+      size: 0.58,
+      map: dustGrainTex,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.68,
+      blending: THREE.NormalBlending,
+      depthWrite: false,
+      fog: true
+    });
+    this.dustParticles = new THREE.Points(this.dustGeo, this.dustMat);
+    this.dustGroup.add(this.dustParticles);
+
+    // 4. Low-Rolling Volumetric Ground Dust Clouds & Sheets
+    this.groundDustClouds = [];
+    this.groundDustSheets = [];
+    const dustCloudTex = this.generateVolumetricDustTexture();
+
+    this.groundDustMat = new THREE.MeshBasicMaterial({
+      map: dustCloudTex,
+      transparent: true,
+      opacity: 0.28,
+      color: 0xc49a60,
+      depthWrite: false,
+      fog: true,
+      side: THREE.DoubleSide
+    });
+
+    // 40 Rolling Ground Dust Clouds (Haboob wall / low tumbling dust clouds)
+    for (let d = 0; d < 40; d++) {
+      const cw = 28.0 + Math.random() * 28.0;
+      const ch = 12.0 + Math.random() * 14.0;
+      const cloudMesh = new THREE.Mesh(new THREE.PlaneGeometry(cw, ch), this.groundDustMat);
+      const cx = (Math.random() - 0.5) * 140;
+      const cy = 1.2 + Math.random() * 5.5;
+      const cz = (Math.random() - 0.5) * 140;
+      cloudMesh.position.set(cx, cy, cz);
+      this.dustGroup.add(cloudMesh);
+      this.groundDustClouds.push({
+        mesh: cloudMesh,
+        baseY: cy,
+        speedMult: 0.80 + Math.random() * 0.40,
+        rotSpeed: 0.20 + Math.random() * 0.35,
+        phase: Math.random() * Math.PI * 2,
+        baseOpacity: 0.24 + Math.random() * 0.08
+      });
+    }
+
+    // 16 Terrain-Hugging Moving Dust Sheets (skimming roads & fissures)
+    for (let s = 0; s < 16; s++) {
+      const sw = 45.0 + Math.random() * 25.0;
+      const sd = 16.0 + Math.random() * 12.0;
+      const sheetMesh = new THREE.Mesh(new THREE.PlaneGeometry(sw, sd), this.groundDustMat);
+      sheetMesh.rotation.x = -Math.PI / 2;
+      const sx = (Math.random() - 0.5) * 130;
+      const sy = 0.32 + Math.random() * 0.20;
+      const sz = (Math.random() - 0.5) * 130;
+      sheetMesh.position.set(sx, sy, sz);
+      this.dustGroup.add(sheetMesh);
+      this.groundDustSheets.push({
+        mesh: sheetMesh,
+        speedMult: 1.15 + Math.random() * 0.35,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+
+    // 5. Windy: 450 Natural Botanical Debris Particles + 220 Curved Aerodynamic Streamlines
+    this.windDebrisGeo = new THREE.BufferGeometry();
+    const debrisPos = new Float32Array(450 * 3);
+    const debrisCol = new Float32Array(450 * 3);
+    this.windDebrisSpeeds = new Float32Array(450);
+    this.windDebrisPhases = new Float32Array(450);
+
+    for (let i = 0; i < 450; i++) {
+      debrisPos[i * 3] = (Math.random() - 0.5) * 130;
+      debrisPos[i * 3 + 1] = 0.4 + Math.random() * 8.0;
+      debrisPos[i * 3 + 2] = (Math.random() - 0.5) * 130;
+
+      this.windDebrisSpeeds[i] = 0.8 + Math.random() * 0.6;
+      this.windDebrisPhases[i] = Math.random() * Math.PI * 2;
+
+      const rnd = Math.random();
+      if (rnd > 0.65) {
+        debrisCol[i * 3] = 0.82; debrisCol[i * 3 + 1] = 0.52; debrisCol[i * 3 + 2] = 0.14; // Golden amber leaf
+      } else if (rnd > 0.40) {
+        debrisCol[i * 3] = 0.32; debrisCol[i * 3 + 1] = 0.48; debrisCol[i * 3 + 2] = 0.16; // Olive botanical leaf
+      } else if (rnd > 0.20) {
+        debrisCol[i * 3] = 0.52; debrisCol[i * 3 + 1] = 0.34; debrisCol[i * 3 + 2] = 0.18; // Dry bark / brown leaf
+      } else {
+        debrisCol[i * 3] = 0.68; debrisCol[i * 3 + 1] = 0.58; debrisCol[i * 3 + 2] = 0.32; // Dry straw / light dried foliage
+      }
+    }
+    this.windDebrisGeo.setAttribute('position', new THREE.BufferAttribute(debrisPos, 3));
+    this.windDebrisGeo.setAttribute('color', new THREE.BufferAttribute(debrisCol, 3));
+    const leafTex = this.generateLeafTexture();
+    const windDebrisMat = new THREE.PointsMaterial({
+      size: 0.42,
+      map: leafTex,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.88,
+      depthWrite: false,
+      fog: true
+    });
+    this.windDebrisParticles = new THREE.Points(this.windDebrisGeo, windDebrisMat);
+    this.windGroup.add(this.windDebrisParticles);
+
+    // 220 Directional Curved Aerodynamic Wind Streamlines (LineSegments with 4 segments = 8 vertices per streamline)
+    this.streamlineCount = 220;
+    this.streamlineSegmentsPerLine = 4;
+    const totalStreamlineVerts = this.streamlineCount * this.streamlineSegmentsPerLine * 2;
+    this.windStreaksGeo = new THREE.BufferGeometry();
+    const streakPos = new Float32Array(totalStreamlineVerts * 3);
+    const streakCol = new Float32Array(totalStreamlineVerts * 3);
+
+    this.streamlineMeta = [];
+    for (let i = 0; i < this.streamlineCount; i++) {
+      const isLow = Math.random() < 0.65;
+      const y = isLow ? (1.5 + Math.random() * 7.5) : (10.0 + Math.random() * 16.0);
+      const len = 10.0 + Math.random() * 18.0;
+      const speed = 25.0 + Math.random() * 14.0;
+      this.streamlineMeta.push({
+        x: (Math.random() - 0.5) * 140,
+        y: y,
+        z: (Math.random() - 0.5) * 140,
+        length: len,
+        speed: speed,
+        waveFreq: 1.6 + Math.random() * 1.4,
+        waveAmp: 0.45 + Math.random() * 0.50,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+
+    // Initialize line vertices & vertex colors (faded edges)
+    for (let i = 0; i < this.streamlineCount; i++) {
+      for (let s = 0; s < this.streamlineSegmentsPerLine; s++) {
+        const idx = (i * this.streamlineSegmentsPerLine + s) * 6;
+        const alpha0 = Math.pow(Math.sin((s / this.streamlineSegmentsPerLine) * Math.PI), 0.85);
+        const alpha1 = Math.pow(Math.sin(((s + 1) / this.streamlineSegmentsPerLine) * Math.PI), 0.85);
+
+        streakCol[idx] = 0.82 * alpha0;
+        streakCol[idx + 1] = 0.92 * alpha0;
+        streakCol[idx + 2] = 1.00 * alpha0;
+
+        streakCol[idx + 3] = 0.82 * alpha1;
+        streakCol[idx + 4] = 0.92 * alpha1;
+        streakCol[idx + 5] = 1.00 * alpha1;
+      }
+    }
+
+    this.windStreaksGeo.setAttribute('position', new THREE.BufferAttribute(streakPos, 3));
+    this.windStreaksGeo.setAttribute('color', new THREE.BufferAttribute(streakCol, 3));
+    this.windStreaksMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.48,
+      depthWrite: false
+    });
+    this.windStreaks = new THREE.LineSegments(this.windStreaksGeo, this.windStreaksMat);
+    this.windGroup.add(this.windStreaks);
+
+    // Default visibility
+    this.rainGroup.visible = false;
+    this.snowGroup.visible = false;
+    this.dustGroup.visible = false;
+    this.windGroup.visible = false;
+    this.surfaceWetnessGroup.visible = false;
+    this.snowAccumulationGroup.visible = false;
+    this.dustAccumulationGroup.visible = false;
+  }
+
+  generateRainDropTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(8, 0, 8, 64);
+    grad.addColorStop(0.0, 'rgba(240, 249, 255, 0.95)');
+    grad.addColorStop(0.2, 'rgba(186, 230, 253, 0.85)');
+    grad.addColorStop(0.7, 'rgba(125, 211, 252, 0.35)');
+    grad.addColorStop(1.0, 'rgba(125, 211, 252, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(12, 16);
+    ctx.lineTo(9.5, 64);
+    ctx.lineTo(6.5, 64);
+    ctx.lineTo(4, 16);
+    ctx.closePath();
+    ctx.fill();
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  generateSnowflakeTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+    grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+    grad.addColorStop(0.25, 'rgba(241, 245, 249, 0.92)');
+    grad.addColorStop(0.55, 'rgba(224, 242, 254, 0.50)');
+    grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(32, 32, 30, 0, Math.PI * 2);
+    ctx.fill();
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  generateDustPuffTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+    grad.addColorStop(0.0, 'rgba(180, 140, 95, 0.75)');
+    grad.addColorStop(0.35, 'rgba(160, 120, 80, 0.55)');
+    grad.addColorStop(0.7, 'rgba(130, 95, 60, 0.22)');
+    grad.addColorStop(1.0, 'rgba(100, 70, 40, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(32, 32, 30, 0, Math.PI * 2);
+    ctx.fill();
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  generateDustGrainTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 64, 64);
+
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+    grad.addColorStop(0.0, 'rgba(255, 245, 230, 0.70)');
+    grad.addColorStop(0.25, 'rgba(230, 200, 160, 0.50)');
+    grad.addColorStop(0.60, 'rgba(190, 150, 100, 0.20)');
+    grad.addColorStop(1.0, 'rgba(140, 100, 60, 0.0)');
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(32, 32, 30, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle micro-mote cluster inside
+    ctx.fillStyle = 'rgba(255, 250, 240, 0.40)';
+    ctx.beginPath();
+    ctx.arc(28, 30, 5, 0, Math.PI * 2);
+    ctx.arc(35, 34, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  generateVolumetricDustTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 256);
+
+    const lobes = [
+      { x: 128, y: 130, r: 95, a: 0.45 },
+      { x: 80,  y: 110, r: 75, a: 0.38 },
+      { x: 175, y: 115, r: 80, a: 0.38 },
+      { x: 105, y: 160, r: 70, a: 0.32 },
+      { x: 155, y: 155, r: 75, a: 0.32 },
+      { x: 65,  y: 145, r: 60, a: 0.28 },
+      { x: 195, y: 140, r: 65, a: 0.28 },
+      { x: 128, y: 80,  r: 65, a: 0.30 }
+    ];
+
+    lobes.forEach(l => {
+      const grad = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r);
+      grad.addColorStop(0.0, `rgba(220, 185, 135, ${l.a})`);
+      grad.addColorStop(0.35, `rgba(200, 160, 110, ${l.a * 0.75})`);
+      grad.addColorStop(0.70, `rgba(175, 135, 85, ${l.a * 0.35})`);
+      grad.addColorStop(1.0, 'rgba(140, 100, 55, 0.0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(l.x, l.y, l.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  generateLeafTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 64, 64);
+
+    ctx.save();
+    ctx.translate(32, 32);
+    ctx.rotate(Math.PI / 4);
+
+    ctx.beginPath();
+    ctx.moveTo(0, -26);
+    ctx.bezierCurveTo(14, -14, 16, 14, 0, 26);
+    ctx.bezierCurveTo(-16, 14, -14, -14, 0, -26);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, -22);
+    ctx.lineTo(0, 22);
+    ctx.stroke();
+
+    ctx.restore();
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  buildWeatherOverlaysForScenario(scenarioType) {
+    this.waterPuddles = [];
+
+    // Clear existing overlay meshes
+    while (this.surfaceWetnessGroup.children.length > 0) {
+      const obj = this.surfaceWetnessGroup.children[0];
+      this.surfaceWetnessGroup.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    }
+    while (this.snowAccumulationGroup.children.length > 0) {
+      const obj = this.snowAccumulationGroup.children[0];
+      this.snowAccumulationGroup.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    }
+    if (this.dustAccumulationGroup) {
+      while (this.dustAccumulationGroup.children.length > 0) {
+        const obj = this.dustAccumulationGroup.children[0];
+        this.dustAccumulationGroup.remove(obj);
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+          else obj.material.dispose();
+        }
+      }
+    }
+
+    if (scenarioType === 'earthquake') {
+      // 1. Wetness & Puddles for Rain
+      const matWetRoad = new THREE.MeshStandardMaterial({
+        color: 0x0a101d,
+        roughness: 0.10,
+        metalness: 0.88,
+        transparent: true,
+        opacity: 0.70
+      });
+      const roadSheen1 = new THREE.Mesh(new THREE.PlaneGeometry(18, 145), matWetRoad);
+      roadSheen1.rotation.x = -Math.PI / 2;
+      roadSheen1.position.set(0, 0.025, 0);
+      this.surfaceWetnessGroup.add(roadSheen1);
+
+      const roadSheen2 = new THREE.Mesh(new THREE.PlaneGeometry(145, 16), matWetRoad);
+      roadSheen2.rotation.x = -Math.PI / 2;
+      roadSheen2.position.set(0, 0.025, 0);
+      this.surfaceWetnessGroup.add(roadSheen2);
+
+      // 18 Water puddles in road fissures and rubble crevices
+      const puddleMat = new THREE.MeshStandardMaterial({
+        color: 0x060c18,
+        roughness: 0.04,
+        metalness: 0.95,
+        transparent: true,
+        opacity: 0.85
+      });
+      const puddleCoords = [
+        [-8, 4, 2.8], [18, -12, 3.5], [-22, -8, 2.2], [2, 14, 3.1], [28, 22, 2.4],
+        [-35, 10, 3.0], [12, 32, 2.6], [-15, -28, 3.2], [35, -5, 2.8], [-5, -16, 2.0],
+        [22, -32, 3.4], [-40, -18, 2.5], [6, -42, 2.9], [-28, 26, 2.2], [42, 15, 3.3],
+        [-12, 38, 2.7], [25, 4, 3.0], [0, -8, 2.5]
+      ];
+      puddleCoords.forEach(([px, pz, pr]) => {
+        const pGeo = new THREE.CircleGeometry(pr, 16);
+        const pMesh = new THREE.Mesh(pGeo, puddleMat.clone());
+        pMesh.rotation.x = -Math.PI / 2;
+        pMesh.position.set(px, 0.035, pz);
+        this.surfaceWetnessGroup.add(pMesh);
+        this.waterPuddles.push(pMesh);
+      });
+
+      // 2. Snow Accumulation & White Coverage for Snow
+      const matSnowGround = new THREE.MeshStandardMaterial({
+        color: 0xf1f5f9,
+        roughness: 0.96,
+        metalness: 0.05
+      });
+      const snowPlanes = [
+        [-38, 0.04, -30, 50, 40],
+        [38, 0.04, -30, 48, 40],
+        [-38, 0.04, 32, 50, 40],
+        [38, 0.04, 32, 48, 40]
+      ];
+      snowPlanes.forEach(([sx, sy, sz, sw, sd]) => {
+        const sp = new THREE.Mesh(new THREE.PlaneGeometry(sw, sd), matSnowGround);
+        sp.rotation.x = -Math.PI / 2;
+        sp.position.set(sx, sy, sz);
+        this.snowAccumulationGroup.add(sp);
+      });
+
+      // Snow caps on building rooftops and pancaked slabs
+      const matSnowCap = new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        roughness: 0.98,
+        metalness: 0.02
+      });
+      const bldgSnowCaps = [
+        [-42, 16.1, -12, 22, 18],
+        [-28, 22.1, 28, 18, 20],
+        [32, 28.1, -18, 24, 22],
+        [40, 18.1, 22, 20, 18],
+        [-18, 8.1, -32, 16, 16],
+        [20, 12.1, 35, 18, 16],
+        [-35, 10.1, 15, 14, 14],
+        [-6.5, 2.05, -6.0, 8.2, 6.2] // Pancaked slab
+      ];
+      bldgSnowCaps.forEach(([bx, by, bz, bw, bd]) => {
+        const sc = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.15, bd), matSnowCap);
+        sc.position.set(bx, by, bz);
+        this.snowAccumulationGroup.add(sc);
+      });
+
+      // 3. Subtle Dust / Sand Accumulation along Road Curbs & Rubble Depressions
+      const matSandDeposit = new THREE.MeshStandardMaterial({
+        color: 0x9c7a4e,
+        roughness: 0.95,
+        transparent: true,
+        opacity: 0.65
+      });
+      const dustDeposits = [
+        [-11.5, 0.038, 40, 2.0, 70],
+        [11.5, 0.038, 40, 2.0, 70],
+        [-11.5, -0.56, -48, 2.0, 64],
+        [11.5, -0.56, -48, 2.0, 64],
+        [0, 0.038, 25.5, 140, 1.8],
+        [-28, 0.038, -6, 12, 10],
+        [24, 0.038, -14, 14, 12]
+      ];
+      dustDeposits.forEach(([dx, dy, dz, dw, dd]) => {
+        const dp = new THREE.Mesh(new THREE.PlaneGeometry(dw, dd), matSandDeposit);
+        dp.rotation.x = -Math.PI / 2;
+        dp.position.set(dx, dy, dz);
+        this.dustAccumulationGroup.add(dp);
+      });
+
+    } else if (scenarioType === 'chemical_fire') {
+      // 1. Wetness & Puddles for Rain
+      const matWetConcrete = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.12,
+        metalness: 0.85,
+        transparent: true,
+        opacity: 0.75
+      });
+      const apronSheen = new THREE.Mesh(new THREE.PlaneGeometry(90, 75), matWetConcrete);
+      apronSheen.rotation.x = -Math.PI / 2;
+      apronSheen.position.set(0, 0.025, 0);
+      this.surfaceWetnessGroup.add(apronSheen);
+
+      const puddleMat = new THREE.MeshStandardMaterial({
+        color: 0x070d18,
+        roughness: 0.05,
+        metalness: 0.95,
+        transparent: true,
+        opacity: 0.85
+      });
+      const indPuddleCoords = [
+        [-14, 6, 3.2], [12, -8, 2.8], [-26, -14, 3.6], [8, 18, 2.9], [24, 8, 3.0],
+        [-8, 26, 2.4], [18, -24, 3.2], [-32, 12, 2.7], [32, -12, 3.4], [0, -18, 2.5]
+      ];
+      indPuddleCoords.forEach(([px, pz, pr]) => {
+        const pGeo = new THREE.CircleGeometry(pr, 16);
+        const pMesh = new THREE.Mesh(pGeo, puddleMat.clone());
+        pMesh.rotation.x = -Math.PI / 2;
+        pMesh.position.set(px, 0.035, pz);
+        this.surfaceWetnessGroup.add(pMesh);
+        this.waterPuddles.push(pMesh);
+      });
+
+      // 2. Snow Accumulation for Snow
+      const matSnowCap = new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        roughness: 0.98,
+        metalness: 0.02
+      });
+      // Snow caps on chemical storage tank domes!
+      const tankSnowCoords = [
+        [-28, 12.1, -18, 6.2], [-14, 12.1, -18, 6.2], [0, 12.1, -18, 6.2],
+        [-28, 12.1, -30, 6.2], [-14, 12.1, -30, 6.2], [0, 12.1, -30, 6.2]
+      ];
+      tankSnowCoords.forEach(([tx, ty, tz, tr]) => {
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(tr, tr, 0.15, 24), matSnowCap);
+        cap.position.set(tx, ty, tz);
+        this.snowAccumulationGroup.add(cap);
+      });
+
+      // Snow on warehouse roof
+      const whSnow = new THREE.Mesh(new THREE.BoxGeometry(45, 0.18, 33), matSnowCap);
+      whSnow.position.set(0, 14.1, 0);
+      this.snowAccumulationGroup.add(whSnow);
+
+      // Ground perimeter snow
+      const matSnowGround = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.96 });
+      const sp1 = new THREE.Mesh(new THREE.PlaneGeometry(120, 25), matSnowGround);
+      sp1.rotation.x = -Math.PI / 2;
+      sp1.position.set(0, 0.04, 38);
+      this.snowAccumulationGroup.add(sp1);
+
+      const sp2 = new THREE.Mesh(new THREE.PlaneGeometry(120, 25), matSnowGround);
+      sp2.rotation.x = -Math.PI / 2;
+      sp2.position.set(0, 0.04, -42);
+      this.snowAccumulationGroup.add(sp2);
+
+      // 3. Subtle Dust Accumulation around Yard Foundation
+      const matIndDust = new THREE.MeshStandardMaterial({
+        color: 0x8c6b42,
+        roughness: 0.95,
+        transparent: true,
+        opacity: 0.60
+      });
+      const indDustDeposits = [
+        [-14, 0.14, -24, 44, 22],
+        [0, 0.14, 22, 50, 14]
+      ];
+      indDustDeposits.forEach(([dx, dy, dz, dw, dd]) => {
+        const dp = new THREE.Mesh(new THREE.PlaneGeometry(dw, dd), matIndDust);
+        dp.rotation.x = -Math.PI / 2;
+        dp.position.set(dx, dy, dz);
+        this.dustAccumulationGroup.add(dp);
+      });
+
+    } else if (scenarioType === 'flash_flood') {
+      // 1. Wetness & Splash Ripples for Rain
+      const matWetWood = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.15,
+        metalness: 0.65,
+        transparent: true,
+        opacity: 0.70
+      });
+      // Wet sheen on school roof platform
+      const schWet = new THREE.Mesh(new THREE.BoxGeometry(22, 0.08, 14), matWetWood);
+      schWet.position.set(28, 6.05, -12);
+      this.surfaceWetnessGroup.add(schWet);
+
+      // 2. Snow Accumulation for Snow
+      const matSnowCap = new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        roughness: 0.98,
+        metalness: 0.02
+      });
+      // Snow on chang-ghar stilt hut thatched roofs
+      const hutSnowCaps = [
+        [-24, 7.8, 18, 12.2, 9.2],
+        [-8, 7.8, 22, 12.2, 9.2],
+        [8, 7.8, 18, 12.2, 9.2],
+        [-18, 7.8, -14, 12.2, 9.2],
+        [28, 6.15, -12, 22.2, 14.2] // Primary school roof
+      ];
+      hutSnowCaps.forEach(([hx, hy, hz, hw, hd]) => {
+        const sc = new THREE.Mesh(new THREE.BoxGeometry(hw, 0.18, hd), matSnowCap);
+        sc.position.set(hx, hy, hz);
+        this.snowAccumulationGroup.add(sc);
+      });
+
+      // Snow on high-ground evacuation relief mound
+      const matSnowGround = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.96 });
+      const moundSnow = new THREE.Mesh(new THREE.PlaneGeometry(24, 18), matSnowGround);
+      moundSnow.rotation.x = -Math.PI / 2;
+      moundSnow.position.set(35, 2.06, -24);
+      this.snowAccumulationGroup.add(moundSnow);
+    }
+
+    // Restore active visibility
+    this.surfaceWetnessGroup.visible = (this.currentWeather === 'rain');
+    this.snowAccumulationGroup.visible = (this.currentWeather === 'snow');
+    this.dustAccumulationGroup.visible = (this.currentWeather === 'dust');
   }
 
   getGasConcentrationAt(pos) {

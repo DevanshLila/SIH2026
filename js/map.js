@@ -170,6 +170,31 @@ class TacticalGisMap {
       ctx.fillText(`${s.id} [${s.triage}]`, p.x + 7, p.y + 3);
     });
 
+    // Draw Home Station Marker on GIS Radar Map
+    const homePos = this.drone.homePosition || { x: 0, z: 0 };
+    const hScreen = this.worldToScreen(homePos.x, homePos.z);
+
+    // Outer cyan landing pad ring
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(hScreen.x, hScreen.y, 9, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner helipad 'H'
+    ctx.fillStyle = '#00f0ff';
+    ctx.font = 'bold 9px "Chakra Petch", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('H', hScreen.x, hScreen.y);
+
+    // Label
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '8px "JetBrains Mono"';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('HOME STATION', hScreen.x + 12, hScreen.y);
+
     // Draw Drone Position & Sensor FOV Cone
     const dronePos = this.drone.group.position;
     const dScreen = this.worldToScreen(dronePos.x, dronePos.z);

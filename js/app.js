@@ -28,6 +28,10 @@ class App {
     this.stars = null;
     this.cloudsGroup = null;
     this.cloudMat = null;
+    this.cloudsLowerGroup = null;
+    this.cloudMatLower = null;
+    this.currentWeather = 'clear';
+    this.skyTextures = {};
     this.sunDir = new THREE.Vector3(0.52, 0.72, 0.45).normalize();
     this.moonDir = new THREE.Vector3(-0.55, 0.68, -0.48).normalize();
 
@@ -141,6 +145,10 @@ class App {
       this.drone.setGroundElevation(0.75);
     }
 
+    // Save actual initial launch/spawn coordinates as HOME STATION
+    this.drone.saveHomePosition();
+    this.environment.createHomeStationMarker(this.drone.homePosition, this.drone.homeRotation);
+
     // Auto-takeoff on startup to immediately engage judges
     setTimeout(() => {
       this.drone.takeoff(14);
@@ -173,6 +181,7 @@ class App {
     const navButtons = document.querySelectorAll('.nav-mode-btn');
     navButtons.forEach(btn => {
       btn.addEventListener('click', (e) => {
+        if (btn.id === 'btn-return-home') return; // Handled by dedicated rthHandler
         navButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const mode = btn.dataset.nav;
@@ -186,6 +195,23 @@ class App {
       scenarioSelect.addEventListener('change', (e) => {
         const scenario = e.target.value;
         this.setScenario(scenario);
+      });
+    }
+
+    // Dynamic Weather Conditions Selector
+    const weatherSelect = document.getElementById('select-weather');
+    if (weatherSelect) {
+      weatherSelect.addEventListener('change', (e) => {
+        const weather = e.target.value;
+        this.setWeather(weather);
+      });
+    }
+
+    // Dynamic Rain Intensity Selector
+    const rainIntensitySelect = document.getElementById('select-rain-intensity');
+    if (rainIntensitySelect) {
+      rainIntensitySelect.addEventListener('change', (e) => {
+        this.setRainIntensity(e.target.value);
       });
     }
 
@@ -211,12 +237,24 @@ class App {
       });
     }
 
-    // Emergency RTH
+    // Return to Home Buttons (Footer, Manual HUD, and GCS)
+    const rthHandler = () => {
+      this.navigator.returnToHome();
+    };
+
+    const btnReturnHome = document.getElementById('btn-return-home');
+    if (btnReturnHome) {
+      btnReturnHome.addEventListener('click', rthHandler);
+    }
+
+    const btnManualRth = document.getElementById('btn-manual-rth');
+    if (btnManualRth) {
+      btnManualRth.addEventListener('click', rthHandler);
+    }
+
     const btnRth = document.getElementById('btn-rth');
     if (btnRth) {
-      btnRth.addEventListener('click', () => {
-        this.navigator.returnToHome();
-      });
+      btnRth.addEventListener('click', rthHandler);
     }
 
     // Tab switcher in GCS
@@ -445,27 +483,121 @@ class App {
     this.environment.buildScenario(scenario);
     if (scenario === 'flash_flood') {
       this.drone.setGroundElevation(2.65); // Elevated NDRF launch wharf pad (surface y = 1.90m + 0.75m skids)
+      this.drone.homePosition.set(0, 2.65, 0);
     } else {
       this.drone.setGroundElevation(0.75);
+      this.drone.homePosition.set(0, 0.75, 0);
     }
+    // Update Home Station for new scenario
+    this.environment.createHomeStationMarker(this.drone.homePosition, this.drone.homeRotation);
     this.updateAtmosphereForScenario(scenario);
     this.navigator.setNavMode('GRID');
     this.gisMap.trail = [];
-    this.sensors.pointHistory = [];
     if (this.sensors) {
+      if (typeof this.sensors.resetLidarMap === 'function') {
+        this.sensors.resetLidarMap();
+      } else {
+        this.sensors.pointHistory = [];
+      }
       this.sensors.activeDetections = [];
       this.sensors.gasReading.ppm = 18;
       this.sensors.gasReading.peakPpm = 18;
       this.sensors.gasReading.type = 'BASELINE ATMOSPHERE';
       this.sensors.gasReading.status = 'NORMAL';
+      if (this.sensors.thermalEngine && this.sensors.sensorMode === 'THERMAL') {
+        this.sensors.thermalEngine.onScenarioChanged();
+      }
     }
     if (this.gcs) this.gcs.updateTriageTable();
   }
 
+  setWeather(weather) {
+    this.currentWeather = weather;
+    const weatherSelect = document.getElementById('select-weather');
+    if (weatherSelect && weatherSelect.value !== weather) {
+      weatherSelect.value = weather;
+    }
+
+    const rainIntensityWrap = document.getElementById('rain-intensity-wrap');
+    if (rainIntensityWrap) {
+      rainIntensityWrap.style.display = (weather === 'rain') ? 'inline-flex' : 'none';
+    }
+
+    const hudWeatherBadge = document.getElementById('hud-weather-badge');
+    const hudWindIndicator = document.getElementById('hud-wind-indicator');
+    const hudVisIndicator = document.getElementById('hud-visibility-indicator');
+
+    const weatherLabels = {
+      clear: '☀️ CLEAR',
+      cloudy: '☁️ CLOUDY',
+      rain: this.rainIntensity ? `🌧️ RAIN (${this.rainIntensity.toUpperCase()})` : '🌧️ RAIN',
+      windy: '💨 WINDY',
+      dust: '🌪️ DUST STORM',
+      snow: '❄️ SNOW'
+    };
+    if (hudWeatherBadge) {
+      hudWeatherBadge.textContent = weatherLabels[weather] || '☀️ CLEAR';
+    }
+
+    if (hudWindIndicator) {
+      const showWind = (weather === 'windy' || weather === 'dust' || weather === 'rain');
+      hudWindIndicator.style.display = showWind ? 'inline-flex' : 'none';
+      if (weather === 'windy') {
+        hudWindIndicator.textContent = 'WIND: 18 m/s →';
+      } else if (weather === 'dust') {
+        hudWindIndicator.textContent = 'WIND: 22 m/s →';
+      } else if (weather === 'rain') {
+        hudWindIndicator.textContent = 'WIND: 10 m/s →';
+      }
+    }
+    if (hudVisIndicator) {
+      hudVisIndicator.style.display = (weather === 'dust') ? 'inline-flex' : 'none';
+      hudVisIndicator.textContent = 'VISIBILITY: REDUCED';
+    }
+
+    if (this.environment) {
+      this.environment.setWeather(weather);
+    }
+    this.updateAtmosphereForScenario(this.environment ? this.environment.currentScenario : 'earthquake');
+  }
+
+  setRainIntensity(level) {
+    if (level !== 'light' && level !== 'moderate' && level !== 'heavy') return;
+    this.rainIntensity = level;
+    const rainSelect = document.getElementById('select-rain-intensity');
+    if (rainSelect && rainSelect.value !== level) {
+      rainSelect.value = level;
+    }
+    if (this.environment && this.environment.setRainIntensity) {
+      this.environment.setRainIntensity(level);
+    }
+    const hudWeatherBadge = document.getElementById('hud-weather-badge');
+    if (hudWeatherBadge && this.currentWeather === 'rain') {
+      hudWeatherBadge.textContent = `🌧️ RAIN (${level.toUpperCase()})`;
+    }
+    this.updateAtmosphereForScenario(this.environment ? this.environment.currentScenario : 'earthquake');
+  }
+
   initSkySystem() {
-    // 1. Procedural High-Res Canvas Textures
-    this.daySkyTexture = this.generateSkyTexture('#0284c7', '#38bdf8', '#bae6fd', true);
-    this.nightSkyTexture = this.generateSkyTexture('#020617', '#081226', '#0f1d3a', false);
+    // 1. Procedural High-Res Canvas Textures for all weather conditions
+    this.skyTextures = {
+      day_clear: this.generateSkyTexture('#0284c7', '#38bdf8', '#bae6fd', 'wisps'),
+      day_cloudy: this.generateSkyTexture('#334155', '#64748b', '#94a3b8', 'overcast'),
+      day_rain: this.generateSkyTexture('#1e293b', '#334155', '#475569', 'storm'),
+      day_windy: this.generateSkyTexture('#0369a1', '#38bdf8', '#93c5fd', 'streaks'),
+      day_dust: this.generateSkyTexture('#78350f', '#92400e', '#b45309', 'dust'),
+      day_snow: this.generateSkyTexture('#475569', '#94a3b8', '#cbd5e1', 'winter'),
+
+      night_clear: this.generateSkyTexture('#020617', '#081226', '#0f1d3a', 'night'),
+      night_cloudy: this.generateSkyTexture('#050b14', '#0f172a', '#1e293b', 'night_overcast'),
+      night_rain: this.generateSkyTexture('#020408', '#090e17', '#131c2e', 'night_storm'),
+      night_windy: this.generateSkyTexture('#020617', '#0b1528', '#162540', 'night_windy'),
+      night_dust: this.generateSkyTexture('#1a0f05', '#2c1a0a', '#3d240e', 'night_dust'),
+      night_snow: this.generateSkyTexture('#060d1a', '#0f1a2e', '#1a2a44', 'night_snow')
+    };
+
+    this.daySkyTexture = this.skyTextures.day_clear;
+    this.nightSkyTexture = this.skyTextures.night_clear;
 
     // 2. 3D Sky Dome Sphere
     const skyGeo = new THREE.SphereGeometry(600, 32, 24);
@@ -650,9 +782,46 @@ class App {
       this.cloudsGroup.add(cluster);
     });
     this.scene.add(this.cloudsGroup);
+
+    // 7. Layered Lower Stratus Clouds (Cloudy Weather)
+    this.cloudsLowerGroup = new THREE.Group();
+    this.cloudMatLower = new THREE.MeshStandardMaterial({
+      color: 0x64748b,
+      roughness: 0.95,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.76
+    });
+    const lowerCloudConfigs = [
+      { x: -110, y: 55, z: -80, s: 2.0 },
+      { x: -30,  y: 62, z: -110, s: 2.4 },
+      { x: 60,   y: 52, z: -60, s: 1.9 },
+      { x: 130,  y: 68, z: -90, s: 2.2 },
+      { x: -130, y: 58, z: 40,   s: 2.1 },
+      { x: -40,  y: 64, z: 80,   s: 2.3 },
+      { x: 50,   y: 56, z: 90,   s: 2.0 },
+      { x: 120,  y: 65, z: 50,   s: 2.5 }
+    ];
+    lowerCloudConfigs.forEach(cfg => {
+      const cluster = new THREE.Group();
+      cluster.position.set(cfg.x, cfg.y, cfg.z);
+      for (let p = 0; p < 7; p++) {
+        const radius = (7.5 + Math.random() * 4.5) * cfg.s;
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 8), this.cloudMatLower);
+        puff.position.set(
+          (Math.random() - 0.5) * 22 * cfg.s,
+          (Math.random() - 0.5) * 5 * cfg.s,
+          (Math.random() - 0.5) * 16 * cfg.s
+        );
+        cluster.add(puff);
+      }
+      this.cloudsLowerGroup.add(cluster);
+    });
+    this.cloudsLowerGroup.visible = false;
+    this.scene.add(this.cloudsLowerGroup);
   }
 
-  generateSkyTexture(topHex, midHex, botHex, withClouds = false) {
+  generateSkyTexture(topHex, midHex, botHex, style = 'wisps') {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
@@ -665,7 +834,7 @@ class App {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 512);
 
-    if (withClouds) {
+    if (style === 'wisps' || style === true) {
       const cloudWisps = [
         { x: 120, y: 360, rx: 140, ry: 25 },
         { x: 380, y: 390, rx: 160, ry: 28 },
@@ -685,6 +854,151 @@ class App {
         ctx.fill();
         ctx.restore();
       });
+    } else if (style === 'overcast') {
+      const overcastBands = [
+        { y: 220, h: 60, col: 'rgba(203, 213, 225, 0.35)' },
+        { y: 310, h: 75, col: 'rgba(148, 163, 184, 0.45)' },
+        { y: 390, h: 80, col: 'rgba(100, 116, 139, 0.50)' },
+        { y: 460, h: 55, col: 'rgba(71, 85, 105, 0.40)' }
+      ];
+      overcastBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(148, 163, 184, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(148, 163, 184, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'storm') {
+      const stormBands = [
+        { y: 200, h: 70, col: 'rgba(30, 41, 59, 0.70)' },
+        { y: 320, h: 90, col: 'rgba(15, 23, 42, 0.85)' },
+        { y: 420, h: 80, col: 'rgba(30, 41, 59, 0.75)' }
+      ];
+      stormBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(15, 23, 42, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(15, 23, 42, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'streaks') {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      for (let i = 0; i < 18; i++) {
+        const y = 140 + i * 18;
+        ctx.lineWidth = 2 + Math.random() * 4;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(180, y - 12, 340, y + 14, 512, y - 6);
+        ctx.stroke();
+      }
+    } else if (style === 'dust') {
+      const dustBands = [
+        { y: 260, h: 90, col: 'rgba(180, 83, 9, 0.45)' },
+        { y: 370, h: 100, col: 'rgba(217, 119, 6, 0.55)' },
+        { y: 460, h: 70, col: 'rgba(146, 64, 14, 0.50)' }
+      ];
+      dustBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(120, 53, 15, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(120, 53, 15, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'winter') {
+      const winterBands = [
+        { y: 280, h: 80, col: 'rgba(241, 245, 249, 0.40)' },
+        { y: 390, h: 90, col: 'rgba(203, 213, 225, 0.50)' }
+      ];
+      winterBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(203, 213, 225, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(203, 213, 225, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'night_overcast') {
+      const nocBands = [
+        { y: 300, h: 90, col: 'rgba(15, 23, 42, 0.75)' },
+        { y: 410, h: 80, col: 'rgba(30, 41, 59, 0.65)' }
+      ];
+      nocBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(2, 6, 23, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(2, 6, 23, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'night_dust') {
+      const ndBands = [
+        { y: 320, h: 100, col: 'rgba(61, 36, 14, 0.75)' }
+      ];
+      ndBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(26, 15, 5, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(26, 15, 5, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'night_snow') {
+      const nsBands = [
+        { y: 320, h: 90, col: 'rgba(26, 42, 68, 0.60)' }
+      ];
+      nsBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(6, 13, 26, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(6, 13, 26, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'night' || style === 'night_clear') {
+      const nightWisps = [
+        { x: 140, y: 350, rx: 120, ry: 20 },
+        { x: 360, y: 400, rx: 140, ry: 24 }
+      ];
+      nightWisps.forEach(w => {
+        const cg = ctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, w.rx);
+        cg.addColorStop(0, 'rgba(30, 58, 138, 0.22)');
+        cg.addColorStop(0.7, 'rgba(15, 23, 42, 0.10)');
+        cg.addColorStop(1, 'rgba(2, 6, 23, 0)');
+        ctx.save();
+        ctx.scale(1, w.ry / w.rx);
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.arc(w.x, w.y * (w.rx / w.ry), w.rx, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    } else if (style === 'night_storm') {
+      const nStormBands = [
+        { y: 240, h: 80, col: 'rgba(15, 23, 42, 0.85)' },
+        { y: 350, h: 95, col: 'rgba(2, 6, 23, 0.92)' },
+        { y: 440, h: 75, col: 'rgba(15, 23, 42, 0.80)' }
+      ];
+      nStormBands.forEach(b => {
+        const bg = ctx.createLinearGradient(0, b.y - b.h, 0, b.y + b.h);
+        bg.addColorStop(0, 'rgba(2, 6, 23, 0)');
+        bg.addColorStop(0.5, b.col);
+        bg.addColorStop(1, 'rgba(2, 6, 23, 0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, b.y - b.h, 512, b.h * 2);
+      });
+    } else if (style === 'night_windy') {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
+      for (let i = 0; i < 14; i++) {
+        const y = 160 + i * 20;
+        ctx.lineWidth = 1.5 + Math.random() * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(180, y - 10, 340, y + 12, 512, y - 4);
+        ctx.stroke();
+      }
     }
 
     const tex = new THREE.CanvasTexture(canvas);
@@ -782,92 +1096,256 @@ class App {
   }
 
   updateAtmosphereForScenario(scenario) {
-    if (this.isNightMode) {
-      // 1. Night Mode across all scenarios: Midnight dark blue sky, visible Moon, subtle stars, moonlight
-      if (this.skyDomeMat && this.nightSkyTexture) {
-        this.skyDomeMat.map = this.nightSkyTexture;
-        this.skyDomeMat.needsUpdate = true;
+    const isNight = this.isNightMode;
+    const weather = this.currentWeather || 'clear';
+    const texKey = (isNight ? 'night_' : 'day_') + weather;
+
+    // 1. Sky Dome Texture
+    if (this.skyDomeMat && this.skyTextures && this.skyTextures[texKey]) {
+      this.skyDomeMat.map = this.skyTextures[texKey];
+      this.skyDomeMat.needsUpdate = true;
+    } else if (this.skyDomeMat) {
+      this.skyDomeMat.map = isNight ? this.nightSkyTexture : this.daySkyTexture;
+      this.skyDomeMat.needsUpdate = true;
+    }
+
+    // 2. Layered Clouds & Lower Cloud Deck
+    if (this.cloudsLowerGroup) {
+      this.cloudsLowerGroup.visible = (weather === 'cloudy');
+    }
+
+    if (isNight) {
+      // NIGHT ATMOSPHERE
+      let bgHex = 0x030712;
+      let fogHex = 0x050b1a;
+      let fogDensity = 0.0048;
+      let moonColor = 0x93c5fd;
+      let moonIntensity = 0.52;
+      let ambColor = 0x1e293b;
+      let ambIntensity = 0.44;
+      let hemiSky = 0x1e293b;
+      let hemiGround = 0x020617;
+      let hemiIntensity = 0.32;
+      let cloudHex = 0x1e293b;
+      let cloudOpacity = 0.35;
+      let showMoon = true;
+      let showStars = true;
+
+      if (weather === 'cloudy') {
+        bgHex = 0x070d18;
+        fogHex = 0x0a101d;
+        fogDensity = 0.0055;
+        moonColor = 0x64748b;
+        moonIntensity = 0.28;
+        ambColor = 0x0f172a;
+        ambIntensity = 0.36;
+        cloudHex = 0x0f172a;
+        cloudOpacity = 0.65;
+        showStars = false;
+        if (this.cloudMatLower) {
+          this.cloudMatLower.color.setHex(0x0a1018);
+          this.cloudMatLower.opacity = 0.70;
+        }
+      } else if (weather === 'rain') {
+        bgHex = 0x020408;
+        fogHex = 0x070c14;
+        fogDensity = (this.rainIntensity === 'light') ? 0.0048 : ((this.rainIntensity === 'moderate') ? 0.0062 : 0.0072);
+        moonColor = 0x8da4be;
+        moonIntensity = 0.38; // Soft stormy moonlight illuminating falling rain & water
+        ambColor = 0x0a1018;
+        ambIntensity = 0.32;
+        cloudHex = 0x070c14;
+        cloudOpacity = 0.88;
+        showMoon = true; // Moon visible through stormy clouds per Requirement 8
+        showStars = false;
+      } else if (weather === 'windy') {
+        bgHex = 0x030712;
+        fogHex = 0x050b1a;
+        fogDensity = 0.0048;
+        moonIntensity = 0.48;
+        ambIntensity = 0.40;
+        cloudHex = 0x1e293b;
+        cloudOpacity = 0.35;
+      } else if (weather === 'dust') {
+        bgHex = 0x140a04;
+        fogHex = 0x241407;
+        fogDensity = 0.0092;
+        moonColor = 0x854d1d;
+        moonIntensity = 0.28;
+        ambColor = 0x1a0e05;
+        ambIntensity = 0.28;
+        hemiSky = 0x341e0b;
+        hemiGround = 0x120703;
+        cloudHex = 0x1f1106;
+        cloudOpacity = 0.50;
+        showStars = false;
+      } else if (weather === 'snow') {
+        bgHex = 0x060d1a;
+        fogHex = 0x0d1b2a;
+        fogDensity = 0.0055;
+        moonColor = 0xbae6fd;
+        moonIntensity = 0.65; // Luminous moonlight on snow
+        ambColor = 0x334155;
+        ambIntensity = 0.52;
+        hemiSky = 0x38bdf8;
+        hemiGround = 0x0f172a;
+        hemiIntensity = 0.38;
+        cloudHex = 0x1e293b;
+        cloudOpacity = 0.40;
       }
-      this.scene.background.setHex(0x030712);
+
+      this.scene.background.setHex(bgHex);
       if (this.scene.fog) {
-        this.scene.fog.color.setHex(0x050b1a);
-        this.scene.fog.density = 0.0048;
+        this.scene.fog.color.setHex(fogHex);
+        this.scene.fog.density = fogDensity;
       }
       if (this.sunGroup) this.sunGroup.visible = false;
-      if (this.moonGroup) this.moonGroup.visible = true;
-      if (this.stars) this.stars.visible = true;
+      if (this.moonGroup) this.moonGroup.visible = showMoon;
+      if (this.stars) this.stars.visible = showStars;
       if (this.cloudMat) {
-        this.cloudMat.color.setHex(0x1e293b);
-        this.cloudMat.opacity = 0.35;
+        this.cloudMat.color.setHex(cloudHex);
+        this.cloudMat.opacity = cloudOpacity;
       }
 
-      // Moonlight direction and realistic nighttime illumination
       this.sunLight.position.copy(this.moonDir).multiplyScalar(150);
-      this.sunLight.color.setHex(0x93c5fd);
-      this.sunLight.intensity = 0.52;
+      this.sunLight.color.setHex(moonColor);
+      this.sunLight.intensity = moonIntensity;
 
-      this.ambientLight.color.setHex(0x1e293b);
-      this.ambientLight.intensity = 0.44;
+      this.ambientLight.color.setHex(ambColor);
+      this.ambientLight.intensity = ambIntensity;
 
-      this.hemiLight.color.setHex(0x1e293b);
-      this.hemiLight.groundColor.setHex(0x020617);
-      this.hemiLight.intensity = 0.32;
+      this.hemiLight.color.setHex(hemiSky);
+      this.hemiLight.groundColor.setHex(hemiGround);
+      this.hemiLight.intensity = hemiIntensity;
+
     } else {
-      // 2. Day Mode: Bright realistic blue daytime sky, visible Sun, bright natural lighting, natural shadows
-      if (this.skyDomeMat && this.daySkyTexture) {
-        this.skyDomeMat.map = this.daySkyTexture;
-        this.skyDomeMat.needsUpdate = true;
+      // DAY ATMOSPHERE
+      let bgHex = 0x38bdf8;
+      let fogHex = 0x93c5fd;
+      let fogDensity = 0.0020;
+      let sunColor = 0xfffbeb;
+      let sunIntensity = 1.85;
+      let ambColor = 0xbfe0f7;
+      let ambIntensity = 1.15;
+      let hemiSky = 0x38bdf8;
+      let hemiGround = 0x1e3a5f;
+      let hemiIntensity = 0.72;
+      let cloudHex = 0xffffff;
+      let cloudOpacity = 0.82;
+      let showSun = true;
+
+      // Base scenario fog adjustment
+      if (scenario === 'flash_flood') {
+        fogHex = 0x93c5fd;
+        fogDensity = 0.0028;
+      } else if (scenario === 'chemical_fire') {
+        fogHex = 0x7dd3fc;
+        fogDensity = 0.0032;
+      } else {
+        fogHex = 0xb8d5e5;
+        fogDensity = 0.0018;
       }
-      this.scene.background.setHex(0x38bdf8);
-      if (this.sunGroup) this.sunGroup.visible = true;
+
+      if (weather === 'cloudy') {
+        bgHex = 0x64748b;
+        fogHex = 0x94a3b8;
+        fogDensity = 0.0042;
+        sunColor = 0xcbd5e1;
+        sunIntensity = 0.75;
+        ambColor = 0x94a3b8;
+        ambIntensity = 1.35; // Soft diffused overcast
+        hemiSky = 0x94a3b8;
+        hemiGround = 0x475569;
+        hemiIntensity = 0.80;
+        cloudHex = 0x94a3b8;
+        cloudOpacity = 0.90;
+        if (this.cloudMatLower) {
+          this.cloudMatLower.color.setHex(0x64748b);
+          this.cloudMatLower.opacity = 0.78;
+        }
+      } else if (weather === 'rain') {
+        bgHex = 0x243242;
+        fogHex = 0x3d4d5e;
+        fogDensity = (this.rainIntensity === 'light') ? 0.0038 : ((this.rainIntensity === 'moderate') ? 0.0052 : 0.0065); // Rain haze
+        sunColor = 0x829bb5;
+        sunIntensity = 0.35;
+        ambColor = 0x5a6d80;
+        ambIntensity = 0.95;
+        hemiSky = 0x4d6175;
+        hemiGround = 0x1e2a36;
+        hemiIntensity = 0.55;
+        cloudHex = 0x334455;
+        cloudOpacity = 0.92;
+        showSun = false;
+      } else if (weather === 'windy') {
+        bgHex = 0x38bdf8;
+        fogHex = 0x93c5fd;
+        fogDensity = 0.0020;
+        sunColor = 0xfffaed;
+        sunIntensity = 1.85;
+        ambColor = 0xc5e2f7;
+        ambIntensity = 1.15;
+        hemiSky = 0x38bdf8;
+        hemiGround = 0x1e3a5f;
+        hemiIntensity = 0.70;
+        cloudHex = 0xf1f5f9;
+        cloudOpacity = 0.85;
+      } else if (weather === 'dust') {
+        bgHex = 0x5c320d;
+        fogHex = 0x8a6336;
+        fogDensity = 0.0088; // Dense dust storm haze
+        sunColor = 0xdf8c28;
+        sunIntensity = 1.15;
+        ambColor = 0xb46b28;
+        ambIntensity = 0.90;
+        hemiSky = 0xa35a18;
+        hemiGround = 0x3b1c04;
+        hemiIntensity = 0.65;
+        cloudHex = 0x7c4618;
+        cloudOpacity = 0.70;
+      } else if (weather === 'snow') {
+        bgHex = 0x64748b;
+        fogHex = 0xcfd8dc;
+        fogDensity = 0.0050; // Frosty mist
+        sunColor = 0xf8fafc;
+        sunIntensity = 1.25;
+        ambColor = 0xcbd5e1;
+        ambIntensity = 1.25; // Crisp winter daylight
+        hemiSky = 0xe2e8f0;
+        hemiGround = 0x64748b;
+        hemiIntensity = 0.75;
+        cloudHex = 0xd1d5db;
+        cloudOpacity = 0.90;
+      }
+
+      this.scene.background.setHex(bgHex);
+      if (this.scene.fog) {
+        this.scene.fog.color.setHex(fogHex);
+        this.scene.fog.density = fogDensity;
+      }
+      if (this.sunGroup) this.sunGroup.visible = showSun;
       if (this.moonGroup) this.moonGroup.visible = false;
       if (this.stars) this.stars.visible = false;
       if (this.cloudMat) {
-        this.cloudMat.color.setHex(0xffffff);
-        this.cloudMat.opacity = 0.82;
+        this.cloudMat.color.setHex(cloudHex);
+        this.cloudMat.opacity = cloudOpacity;
       }
 
-      // Sunlight direction and brilliant daylight illumination
       this.sunLight.position.copy(this.sunDir).multiplyScalar(150);
-      this.sunLight.color.setHex(0xfffbeb);
-      this.sunLight.intensity = 1.85;
+      this.sunLight.color.setHex(sunColor);
+      this.sunLight.intensity = sunIntensity;
 
-      this.ambientLight.color.setHex(0xbfe0f7);
-      this.ambientLight.intensity = 1.15;
+      this.ambientLight.color.setHex(ambColor);
+      this.ambientLight.intensity = ambIntensity;
 
-      this.hemiLight.color.setHex(0x38bdf8);
-      this.hemiLight.groundColor.setHex(0x1e3a5f);
-      this.hemiLight.intensity = 0.72;
+      this.hemiLight.color.setHex(hemiSky);
+      this.hemiLight.groundColor.setHex(hemiGround);
+      this.hemiLight.intensity = hemiIntensity;
+    }
 
-      if (scenario === 'flash_flood') {
-        // Bright disaster response scene with soft atmospheric blue haze
-        if (this.scene.fog) {
-          this.scene.fog.color.setHex(0x93c5fd);
-          this.scene.fog.density = 0.0032;
-        }
-      } else if (scenario === 'chemical_fire') {
-        if (this.scene.fog) {
-          this.scene.fog.color.setHex(0x7dd3fc);
-          this.scene.fog.density = 0.0038;
-        }
-      } else {
-        // Realistic 3D Earthquake Simulation: strong daylight, cool blue/turquoise ambient shadows, subtle dust haze
-        this.scene.background.setHex(0x38bdf8);
-        this.sunLight.color.setHex(0xfffdf5);
-        this.sunLight.intensity = 1.65;
-
-        this.ambientLight.color.setHex(0xbfdbfe);
-        this.ambientLight.intensity = 0.60;
-
-        this.hemiLight.color.setHex(0x38bdf8);
-        this.hemiLight.groundColor.setHex(0x1e3a5f);
-        this.hemiLight.intensity = 0.45;
-
-        if (this.scene.fog) {
-          this.scene.fog.color.setHex(0xb8d5e5);
-          this.scene.fog.density = 0.0018;
-        }
-      }
+    // If FLIR Thermal IR mode is active, maintain radiometric FLIR dark atmosphere
+    if (this.sensors && this.sensors.sensorMode === 'THERMAL' && this.sensors.thermalEngine) {
+      this.sensors.thermalEngine.onAtmosphereChanged();
     }
 
     // Update HUD Tactical Disaster Tag
@@ -922,7 +1400,7 @@ class App {
 
     // 1. Update Subsystems
     this.drone.update(delta);
-    this.environment.update(delta);
+    this.environment.update(delta, this.camera.position, this.drone ? this.drone.position : null, this.camera);
     this.navigator.update(delta);
     this.sensors.update(delta);
     this.gcs.update(delta);
@@ -944,11 +1422,43 @@ class App {
       this.moonGroup.position.copy(this.camera.position).addScaledVector(this.moonDir, 420);
       this.moonGroup.quaternion.copy(this.camera.quaternion);
     }
+
+    // Dynamic Cloud Movement (Synchronized with dynamic wind vector & speed)
+    const isWindy = (this.currentWeather === 'windy');
+    const isDust = (this.currentWeather === 'dust');
+    const isRain = (this.currentWeather === 'rain');
+    const cloudSpeed = (isWindy ? 3.6 : (isDust ? 2.4 : (isRain ? 1.2 : 0.35))) * delta;
+    const windVecX = (this.environment && typeof this.environment.windAngle === 'number') ? Math.cos(this.environment.windAngle) : 1;
+    const windVecZ = (this.environment && typeof this.environment.windAngle === 'number') ? Math.sin(this.environment.windAngle) : 0;
+
     if (this.cloudsGroup) {
       this.cloudsGroup.children.forEach(c => {
-        c.position.x += 0.35 * delta;
-        if (c.position.x > 250) c.position.x = -250;
+        c.position.x += cloudSpeed * windVecX;
+        c.position.z += cloudSpeed * windVecZ * 0.35;
+        if (c.position.x > 260) c.position.x = -260;
+        else if (c.position.x < -260) c.position.x = 260;
       });
+    }
+    if (this.cloudsLowerGroup && this.cloudsLowerGroup.visible) {
+      this.cloudsLowerGroup.children.forEach(c => {
+        c.position.x += (isWindy ? 4.2 : 0.6) * delta * windVecX;
+        c.position.z += (isWindy ? 4.2 : 0.6) * delta * windVecZ * 0.35;
+        if (c.position.x > 260) c.position.x = -260;
+        else if (c.position.x < -260) c.position.x = 260;
+      });
+    }
+
+    // Live HUD Wind Indicator update with variable direction and speed
+    const hudWind = document.getElementById('hud-wind-indicator');
+    if (hudWind && (this.currentWeather === 'windy' || this.currentWeather === 'dust' || this.currentWeather === 'rain')) {
+      const liveSpeed = (this.environment && this.environment.currentLiveWindSpeed)
+        ? this.environment.currentLiveWindSpeed.toFixed(1)
+        : (this.currentWeather === 'dust' ? '22.0' : (this.currentWeather === 'windy' ? '18.0' : '10.5'));
+      const windAngleRad = (this.environment && typeof this.environment.windAngle === 'number')
+        ? this.environment.windAngle
+        : 0;
+      const windAngleDeg = Math.round(windAngleRad * (180 / Math.PI));
+      hudWind.innerHTML = `WIND: ${liveSpeed} m/s <span class="wind-arrow-icon" style="display:inline-block; transform:rotate(${windAngleDeg}deg); transition:transform 0.2s ease;">→</span>`;
     }
 
     // 3. Camera tracking

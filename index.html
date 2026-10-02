@@ -27,8 +27,8 @@
 
       <div class="header-center">
         <div class="status-pill">
-          <div class="status-dot"></div>
-          <span class="mono" style="font-weight:700;">AUTONOMOUS SAR ACTIVE</span>
+          <div class="status-dot" id="header-status-dot"></div>
+          <span class="mono" id="header-status-text" style="font-weight:700;">AUTONOMOUS SAR ACTIVE</span>
         </div>
 
         <!-- Disaster Scenario Selector -->
@@ -37,6 +37,29 @@
           <option value="chemical_fire">☣️ Industrial Gas & Factory Blast</option>
           <option value="flash_flood">🌊 FLOOD / TSUNAMI</option>
         </select>
+
+        <!-- Weather Conditions Selector -->
+        <div class="weather-selector-wrap" title="Dynamic Weather & Environment Conditions">
+          <span class="weather-prefix-label mono">WEATHER:</span>
+          <select id="select-weather" class="btn-tactical select-weather">
+            <option value="clear">☀️ Clear</option>
+            <option value="cloudy">☁️ Cloudy</option>
+            <option value="rain">🌧️ Rain</option>
+            <option value="windy">💨 Windy</option>
+            <option value="dust">🌪️ Dust</option>
+            <option value="snow">❄️ Snow</option>
+          </select>
+        </div>
+
+        <!-- Rain Intensity Selector (Visible when Rain is selected) -->
+        <div id="rain-intensity-wrap" class="weather-selector-wrap rain-intensity-wrap" style="display:none;" title="Rain Precipitation Intensity">
+          <span class="weather-prefix-label mono" style="color:#60a5fa;">INTENSITY:</span>
+          <select id="select-rain-intensity" class="btn-tactical select-weather select-rain-intensity">
+            <option value="light">🌧️ Light</option>
+            <option value="moderate">🌧️ Moderate</option>
+            <option value="heavy" selected>🌧️ Heavy</option>
+          </select>
+        </div>
 
         <!-- Day / Night Mode Toggle -->
         <button id="btn-day-night" class="btn-tactical" style="padding: 0.35rem 0.65rem;" title="Toggle Day / Night environmental lighting">
@@ -77,8 +100,123 @@
         </div>
 
         <!-- Thermal / NVG Shader Scanline Overlays -->
-        <div id="thermal-scanlines" class="thermal-scanline-overlay"></div>
+        <div id="thermal-scanlines" class="thermal-scanline-overlay" style="display:none !important;"></div>
         <div id="nvg-filter" class="nvg-overlay"></div>
+
+        <!-- FLIR Thermal Radiometric Temperature Scale Legend -->
+        <div id="thermal-legend" class="thermal-legend" style="display: none;">
+          <div class="thermal-legend-badge">
+            <span class="thermal-badge-dot"></span>
+            <span>FLIR LWIR &bull; RADIOMETRIC</span>
+          </div>
+          <div class="thermal-legend-body">
+            <div class="thermal-colorbar"></div>
+            <div class="thermal-scale-labels">
+              <div class="thermal-scale-step hot">
+                <span class="step-indicator">🔴</span>
+                <span class="step-temp">&ge;45&deg;C</span>
+                <span class="step-name">HOT</span>
+              </div>
+              <div class="thermal-scale-step warm-hot">
+                <span class="step-indicator">🟠</span>
+                <span class="step-temp">35&deg;C</span>
+                <span class="step-name">WARM</span>
+              </div>
+              <div class="thermal-scale-step amb">
+                <span class="step-indicator">🟢</span>
+                <span class="step-temp">25&deg;C</span>
+                <span class="step-name">MOD</span>
+              </div>
+              <div class="thermal-scale-step cool">
+                <span class="step-indicator">🔵</span>
+                <span class="step-temp">15&deg;C</span>
+                <span class="step-name">COOL</span>
+              </div>
+              <div class="thermal-scale-step cold">
+                <span class="step-indicator">🟣</span>
+                <span class="step-temp">&le;5&deg;C</span>
+                <span class="step-name">COLD</span>
+              </div>
+            </div>
+          </div>
+          <div class="thermal-legend-footer">
+            <span>SIMULATED VALUES</span>
+          </div>
+        </div>
+
+        <!-- 3D LiDAR SLAM Tactical Telemetry & Mode HUD Panel -->
+        <div id="lidar-slam-panel" class="lidar-slam-hud" style="display: none;">
+          <div class="lidar-hud-header">
+            <div class="lidar-hud-title-wrap">
+              <span class="lidar-pulse-dot"></span>
+              <span class="lidar-hud-title">3D LiDAR SLAM // ENVIRONMENT RECONSTRUCTION</span>
+            </div>
+            <span id="lidar-hud-badge" class="lidar-hud-badge">ACTIVE SCAN</span>
+          </div>
+          <div class="lidar-stats-grid">
+            <div class="lidar-stat">
+              <span class="l-lbl">SCAN RANGE</span>
+              <span id="lidar-val-range" class="l-val cyan">50.0 m</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">H/V FOV</span>
+              <span id="lidar-val-fov" class="l-val">360° × [-15° → +15°]</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">SCAN RATE</span>
+              <span id="lidar-val-rate" class="l-val cyan">15.0 Hz</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">POINTS/SEC</span>
+              <span id="lidar-val-pps" class="l-val cyan">1,280</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">RETURNS</span>
+              <span id="lidar-val-returns" class="l-val">94.2%</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">POINT CLOUD</span>
+              <span id="lidar-val-points" class="l-val cyan">0</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">SCANNED AREA</span>
+              <span id="lidar-val-area" class="l-val">0 m²</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">MAP COVERAGE</span>
+              <span id="lidar-val-coverage" class="l-val">0%</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">SLAM MAP</span>
+              <span id="lidar-val-map" class="l-val">0%</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">SLAM STATE</span>
+              <span id="lidar-val-slam" class="l-val green">LOCKED</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">WEATHER IMPACT</span>
+              <span id="lidar-val-weather-impact" class="l-val green">LOW</span>
+            </div>
+            <div class="lidar-stat">
+              <span class="l-lbl">SENSOR NOISE</span>
+              <span id="lidar-val-noise" class="l-val green">LOW</span>
+            </div>
+            <div class="lidar-stat" style="display:none;">
+              <span id="lidar-val-quality" class="l-val green">98%</span>
+              <span id="lidar-val-weather" class="l-val">OPTIMAL (50m)</span>
+            </div>
+          </div>
+          <div class="lidar-vis-modes">
+            <span class="l-mode-lbl">LiDAR VISUALIZATION:</span>
+            <div class="lidar-mode-btns">
+              <button class="lidar-vis-btn active" data-vismode="COMBINED">Combined</button>
+              <button class="lidar-vis-btn" data-vismode="POINT_CLOUD">Point Cloud</button>
+              <button class="lidar-vis-btn" data-vismode="SCAN_RAYS">Scan Rays</button>
+              <button class="lidar-vis-btn" data-vismode="ENVIRONMENT">Environment</button>
+            </div>
+          </div>
+        </div>
 
         <!-- Viewport Topbar Toolbar: Sensor Switcher & Camera Switcher -->
         <div class="viewport-topbar">
@@ -110,12 +248,22 @@
             <span class="mono" style="color:#10b981;">NPU: 68 FPS</span>
           </div>
 
-          <!-- Tactical Disaster Simulation Header Tag -->
+          <!-- Tactical Disaster & Environmental Simulation Header Tag -->
           <div id="hud-disaster-tag" class="hud-disaster-tag">
             <span class="hazard-badge-dot"></span>
             <span id="hud-disaster-title" class="hazard-badge-text">EARTHQUAKE DISASTER SIMULATION // ZONE ALPHA-4</span>
             <span class="hazard-badge-sep">&bull;</span>
             <span id="hud-disaster-metric" class="mono" style="color:#ef4444; font-weight:700;">M7.2 AFTERMATH</span>
+            <span class="hazard-badge-sep">&bull;</span>
+            <span id="hud-weather-badge" class="weather-badge-text" style="color:#facc15; font-weight:700;">☀️ CLEAR</span>
+            <span id="hud-wind-indicator" class="mono hud-wind-indicator" style="display:none; color:#38bdf8; font-weight:700;">WIND: 18 m/s →</span>
+            <span id="hud-visibility-indicator" class="mono hud-vis-indicator" style="display:none; color:#ef4444; font-weight:700;">VISIBILITY: REDUCED</span>
+          </div>
+          
+          <!-- Small RTH Status Indicator -->
+          <div id="hud-rth-indicator" class="hud-rth-indicator" style="display: none;">
+            <span class="rth-pulse-dot"></span>
+            <span id="hud-rth-text" class="rth-status-text">RETURNING TO HOME</span>
           </div>
 
           <!-- Center Crosshair & Pitch Ladder -->
@@ -141,6 +289,66 @@
             <span style="font-size:0.6rem;">CLICK TO SWAP</span>
           </div>
           <canvas id="pip-canvas"></canvas>
+        </div>
+
+        <!-- Floating Compact Manual Flight Control HUD (WASD & Arrows) -->
+        <div id="manual-control-panel" class="manual-control-hud" style="display: none;" aria-label="Manual Flight Control Panel">
+          <div class="manual-hud-header">
+            <div class="manual-hud-title">
+              <span class="manual-hud-dot"></span>
+              <span>MANUAL FLIGHT TELEOPERATION</span>
+            </div>
+            <span class="manual-hud-badge" id="manual-hud-status-badge">ACTIVE</span>
+          </div>
+          <div class="manual-controls-grid">
+            <!-- Translation Section (WASD) -->
+            <div class="control-cluster">
+              <div class="cluster-label">TRANSLATION (LOCAL)</div>
+              <div class="key-control-list">
+                <div class="key-item" id="item-w" data-action="forward">
+                  <div class="key-box" id="key-w">W</div>
+                  <span class="key-action">Move Forward</span>
+                </div>
+                <div class="key-item" id="item-s" data-action="backward">
+                  <div class="key-box" id="key-s">S</div>
+                  <span class="key-action">Move Backward</span>
+                </div>
+                <div class="key-item" id="item-a" data-action="left">
+                  <div class="key-box" id="key-a">A</div>
+                  <span class="key-action">Move Left</span>
+                </div>
+                <div class="key-item" id="item-d" data-action="right">
+                  <div class="key-box" id="key-d">D</div>
+                  <span class="key-action">Move Right</span>
+                </div>
+              </div>
+            </div>
+            <!-- Altitude & Yaw Section (Arrows) -->
+            <div class="control-cluster">
+              <div class="cluster-label">ALTITUDE &amp; YAW</div>
+              <div class="key-control-list">
+                <div class="key-item" id="item-up" data-action="up">
+                  <div class="key-box" id="key-up">&uarr;</div>
+                  <span class="key-action">Move Up</span>
+                </div>
+                <div class="key-item" id="item-down" data-action="down">
+                  <div class="key-box" id="key-down">&darr;</div>
+                  <span class="key-action">Move Down</span>
+                </div>
+                <div class="key-item" id="item-left" data-action="yawLeft">
+                  <div class="key-box" id="key-left">&larr;</div>
+                  <span class="key-action">Rotate Left</span>
+                </div>
+                <div class="key-item" id="item-right" data-action="yawRight">
+                  <div class="key-box" id="key-right">&rarr;</div>
+                  <span class="key-action">Rotate Right</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button id="btn-manual-rth" class="manual-rth-btn" title="Initiate Return to Home">
+            ↩ RETURN TO HOME
+          </button>
         </div>
 
         <!-- Tour Guide Toast for SIH Judges -->
@@ -255,8 +463,8 @@
               <button id="btn-drop-payload" class="btn-tactical btn-primary" style="justify-content:center;">
                 📦 Drop Emergency Medkit
               </button>
-              <button id="btn-rth" class="btn-tactical btn-alert" style="justify-content:center;">
-                🏠 Emergency RTH
+              <button id="btn-rth" class="btn-tactical btn-alert" style="justify-content:center;" title="Return UAV to Home Station">
+                ↩ RETURN TO HOME
               </button>
             </div>
           </div>
@@ -335,6 +543,13 @@
         <button class="nav-mode-btn" data-nav="SPIRAL">Spiral Recon</button>
         <button class="nav-mode-btn" data-nav="UWB_DENIED">GPS-Denied UWB</button>
         <button class="nav-mode-btn" data-nav="MANUAL">Manual (WASD)</button>
+        <button id="btn-return-home" class="nav-mode-btn btn-return-home" data-nav="RTH" title="Return UAV to Home Base Station">
+          ↩ RETURN TO HOME
+        </button>
+        <div id="footer-rth-status" class="footer-rth-status" style="display: none;">
+          <span class="rth-pulse-dot"></span>
+          <span id="footer-rth-text" class="mono">RETURNING TO HOME</span>
+        </div>
       </div>
 
       <!-- Live Mission Metrics -->
@@ -489,12 +704,13 @@
   </div>
 
   <!-- JavaScript Modules -->
-  <script src="js/drone.js?v=3"></script>
-  <script src="js/environment.js?v=3"></script>
-  <script src="js/sensors.js?v=3"></script>
-  <script src="js/navigation.js?v=3"></script>
-  <script src="js/map.js?v=3"></script>
-  <script src="js/dashboard.js?v=3"></script>
-  <script src="js/app.js?v=3"></script>
+  <script src="js/drone.js?v=4"></script>
+  <script src="js/environment.js?v=4"></script>
+  <script src="js/thermal.js?v=4"></script>
+  <script src="js/sensors.js?v=4"></script>
+  <script src="js/navigation.js?v=4"></script>
+  <script src="js/map.js?v=4"></script>
+  <script src="js/dashboard.js?v=4"></script>
+  <script src="js/app.js?v=4"></script>
 </body>
 </html>

@@ -349,21 +349,155 @@ body {
 }
 
 /* Shaders / Post-processing Overlays */
-.thermal-filter {
-  filter: contrast(160%) saturate(220%) hue-rotate(180deg) invert(10%);
+.thermal-filter,
+.thermal-mode {
+  /* Removed old hue-rotate pink/red tint. 3D WebGL false-color thermal shader pipeline handles FLIR LWIR radiometry */
 }
 
 .thermal-scanline-overlay {
+  display: none !important;
+}
+
+/* FLIR Radiometric Thermal IR Temperature Legend HUD */
+.thermal-legend {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.15) 2px, transparent 2px, transparent 4px);
-  mix-blend-mode: overlay;
+  top: 64px;
+  right: 24px;
+  z-index: 12;
   display: none;
-  z-index: 11;
+  flex-direction: column;
+  background: rgba(11, 19, 38, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 16px rgba(2, 132, 199, 0.15);
+  pointer-events: none;
+  min-width: 130px;
+  font-family: 'JetBrains Mono', 'Chakra Petch', monospace;
+  animation: thermalLegendFadeIn 0.25s ease-out;
+}
+
+@keyframes thermalLegendFadeIn {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.thermal-legend-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.22);
+  padding-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.thermal-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f97316;
+  box-shadow: 0 0 8px #f97316;
+  animation: thermalPulse 1.8s infinite;
+}
+
+@keyframes thermalPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.thermal-legend-body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 12px;
+  height: 154px;
+}
+
+.thermal-colorbar {
+  width: 12px;
+  border-radius: 6px;
+  background: linear-gradient(
+    to bottom,
+    #ffffff 0%,
+    #fef08a 6%,
+    #ef4444 18%,
+    #f97316 32%,
+    #eab308 48%,
+    #22c55e 66%,
+    #06b6d4 82%,
+    #0284c7 92%,
+    #07153d 100%
+  );
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.thermal-scale-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1px 0;
+  flex: 1;
+}
+
+.thermal-scale-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.64rem;
+  line-height: 1;
+}
+
+.thermal-scale-step .step-indicator {
+  font-size: 0.60rem;
+  line-height: 1;
+  margin-right: 3px;
+}
+
+.thermal-scale-step .step-temp {
+  font-weight: 700;
+  min-width: 42px;
+}
+
+.thermal-scale-step .step-name {
+  font-size: 0.56rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.thermal-scale-step.hot .step-temp { color: #f87171; }
+.thermal-scale-step.hot .step-name { background: rgba(239, 68, 68, 0.25); color: #fca5a5; }
+
+.thermal-scale-step.warm-hot .step-temp { color: #f59e0b; }
+.thermal-scale-step.warm-hot .step-name { background: rgba(245, 158, 11, 0.25); color: #fde68a; }
+
+.thermal-scale-step.amb .step-temp { color: #4ade80; }
+.thermal-scale-step.amb .step-name { background: rgba(34, 197, 94, 0.25); color: #86efac; }
+
+.thermal-scale-step.cool .step-temp { color: #38bdf8; }
+.thermal-scale-step.cool .step-name { background: rgba(56, 189, 248, 0.25); color: #bae6fd; }
+
+.thermal-scale-step.cold .step-temp { color: #818cf8; }
+.thermal-scale-step.cold .step-name { background: rgba(99, 102, 241, 0.25); color: #c7d2fe; }
+
+.thermal-legend-footer {
+  margin-top: 8px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(56, 189, 248, 0.2);
+  font-size: 0.52rem;
+  color: #94a3b8;
+  text-align: center;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
 .nvg-overlay {
@@ -508,6 +642,94 @@ body {
   color: #64748b;
 }
 
+.weather-badge-text {
+  color: #facc15;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 10px rgba(250, 204, 21, 0.4);
+}
+
+.hud-wind-indicator {
+  color: #38bdf8;
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  padding: 1px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  animation: wind-hud-pulse 2s infinite ease-in-out;
+}
+
+@keyframes wind-hud-pulse {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; border-color: rgba(0, 240, 255, 0.85); box-shadow: 0 0 8px rgba(0, 240, 255, 0.4); }
+}
+
+.hud-vis-indicator {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.65);
+  padding: 1px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  animation: vis-hud-flash 1.2s infinite ease-in-out;
+}
+
+@keyframes vis-hud-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; box-shadow: 0 0 10px rgba(239, 68, 68, 0.5); }
+}
+
+.weather-selector-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 4px;
+  padding: 0 4px 0 8px;
+  transition: all 0.2s ease;
+}
+
+.weather-selector-wrap:hover,
+.weather-selector-wrap:focus-within {
+  border-color: var(--cyan-glow);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
+}
+
+.rain-intensity-wrap {
+  border-color: rgba(96, 165, 250, 0.5);
+}
+.rain-intensity-wrap:hover,
+.rain-intensity-wrap:focus-within {
+  border-color: #60a5fa;
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.45);
+}
+
+.weather-prefix-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+#select-weather, .select-weather {
+  border: none !important;
+  background: transparent !important;
+  color: #f8fafc;
+  padding: 0.35rem 0.45rem !important;
+  font-weight: 600;
+  box-shadow: none !important;
+  cursor: pointer;
+  outline: none;
+}
+
+#select-weather option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
 /* AI Detection Bounding Boxes Overlay */
 #ai-detections-container {
   position: absolute;
@@ -609,6 +831,20 @@ body {
   background: rgba(0, 240, 255, 0.04);
 }
 
+.ai-bbox.obstacle {
+  border-color: #f59e0b;
+  border-style: dashed;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.ai-bbox.void {
+  border-color: #c084fc;
+  border-style: dashed;
+  box-shadow: 0 0 14px rgba(192, 132, 252, 0.6);
+  background: rgba(192, 132, 252, 0.06);
+}
+
 .ai-label {
   position: absolute;
   left: -2px;
@@ -672,6 +908,225 @@ body {
   padding-left: 9px;
 }
 
+.ai-label-state {
+  font-size: 0.56rem;
+  color: #facc15;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding-left: 9px;
+  line-height: 1.25;
+}
+
+.ai-label-lidar-fusion {
+  font-size: 0.53rem;
+  color: #38bdf8;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding-left: 9px;
+  line-height: 1.25;
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+}
+
+.ai-thermal-indicator {
+  font-size: 0.65rem;
+  margin-left: 3px;
+  display: inline-block;
+  animation: pulseHotspot 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes pulseHotspot {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  100% { transform: scale(1.15); opacity: 1.0; }
+}
+
+.ai-bbox.obstructed {
+  border-style: dashed !important;
+  border-width: 1.5px !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.7), inset 0 0 8px rgba(239, 68, 68, 0.15) !important;
+  animation: pulseObstructed 2s infinite ease-in-out;
+}
+
+@keyframes pulseObstructed {
+  0%, 100% { border-color: rgba(239, 68, 68, 0.9); }
+  50% { border-color: rgba(245, 158, 11, 0.95); }
+}
+
+.ai-bbox.acquiring-lock {
+  animation: militaryTargetLock 1.8s ease-out forwards;
+}
+
+@keyframes militaryTargetLock {
+  0% { transform: scale(1.32); opacity: 0.3; }
+  30% { transform: scale(0.95); opacity: 0.95; }
+  65% { transform: scale(1.05); }
+  100% { transform: scale(1.0); opacity: 1.0; }
+}
+
+.ai-bbox.acquiring-lock .ai-bbox-corner {
+  border-width: 3px !important;
+  box-shadow: 0 0 8px #00f0ff;
+}
+
+.ai-lock-reticle {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #00f0ff;
+  background: rgba(0, 240, 255, 0.2);
+  border: 1px solid #00f0ff;
+  border-radius: 2px;
+  padding: 1px 4px;
+  margin-left: 4px;
+  letter-spacing: 0.5px;
+  animation: blinkLock 0.6s infinite alternate;
+}
+
+@keyframes blinkLock {
+  0% { opacity: 0.6; }
+  100% { opacity: 1.0; }
+}
+
+/* 3D LiDAR SLAM Tactical Telemetry & Mode HUD Panel */
+.lidar-slam-hud {
+  position: absolute;
+  top: 72px;
+  right: 18px;
+  width: 320px;
+  background: rgba(6, 12, 24, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.75), 0 0 15px rgba(0, 240, 255, 0.15);
+  backdrop-filter: blur(8px);
+  z-index: 22;
+  font-family: 'JetBrains Mono', monospace;
+  pointer-events: auto;
+}
+
+.lidar-hud-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.lidar-hud-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lidar-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00f0ff;
+  box-shadow: 0 0 8px #00f0ff;
+  animation: pulseLidarDot 1.4s infinite alternate ease-in-out;
+}
+
+@keyframes pulseLidarDot {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.2); opacity: 1.0; }
+}
+
+.lidar-hud-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.4px;
+}
+
+.lidar-hud-badge {
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 2px 5px;
+  background: rgba(0, 240, 255, 0.15);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: #00f0ff;
+  border-radius: 3px;
+}
+
+.lidar-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.lidar-stat {
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.65);
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.lidar-stat .l-lbl {
+  font-size: 0.52rem;
+  color: #94a3b8;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+}
+
+.lidar-stat .l-val {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+.lidar-stat .l-val.cyan { color: #00f0ff; }
+.lidar-stat .l-val.green { color: #10b981; }
+.lidar-stat .l-val.yellow { color: #facc15; }
+.lidar-stat .l-val.red { color: #ef4444; }
+
+.lidar-vis-modes {
+  border-top: 1px solid rgba(51, 65, 85, 0.5);
+  padding-top: 6px;
+}
+
+.l-mode-lbl {
+  display: block;
+  font-size: 0.54rem;
+  color: #94a3b8;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.lidar-mode-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.lidar-vis-btn {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  color: #94a3b8;
+  font-size: 0.56rem;
+  font-weight: 600;
+  padding: 4px 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.lidar-vis-btn:hover {
+  border-color: rgba(0, 240, 255, 0.6);
+  color: #f1f5f9;
+}
+
+.lidar-vis-btn.active {
+  background: rgba(0, 240, 255, 0.18);
+  border-color: #00f0ff;
+  color: #00f0ff;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+
 /* PIP Inset Preview Window */
 .pip-preview-window {
   position: absolute;
@@ -709,6 +1164,196 @@ body {
   width: 100%;
   height: calc(100% - 24px);
   display: block;
+}
+
+/* Floating Compact Manual Control HUD (WASD & Arrows) */
+.manual-control-hud {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  width: 326px;
+  background: rgba(10, 16, 28, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-focus);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.85), 0 0 16px rgba(0, 240, 255, 0.15);
+  padding: 10px 14px;
+  z-index: 25;
+  user-select: none;
+  font-family: 'JetBrains Mono', monospace;
+  animation: hud-panel-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes hud-panel-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.manual-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.manual-hud-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #38bdf8;
+}
+
+.manual-hud-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cyan-glow);
+  box-shadow: 0 0 8px var(--cyan-glow);
+  animation: pulse-manual-dot 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-manual-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+.manual-hud-badge {
+  font-size: 0.60rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(0, 240, 255, 0.15);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: var(--cyan-glow);
+  letter-spacing: 0.5px;
+}
+
+.manual-controls-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.control-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cluster-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.key-control-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.key-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.key-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Key box normal styling */
+.key-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 4px;
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.05s ease-out, background 0.05s ease-out, border-color 0.05s ease-out, box-shadow 0.05s ease-out, color 0.05s ease-out;
+}
+
+.key-action {
+  font-size: 0.68rem;
+  color: #cbd5e1;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  transition: color 0.05s ease-out, text-shadow 0.05s ease-out;
+}
+
+/* Pressed / Active live indicator state */
+.key-box.active {
+  background: linear-gradient(135deg, #0284c7, #00f0ff);
+  border-color: #00f0ff;
+  color: #040914;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.9), inset 0 1px 2px rgba(0, 0, 0, 0.5);
+  transform: translateY(1.5px) scale(0.93);
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+.key-item.active .key-action {
+  color: #38bdf8;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.manual-rth-btn {
+  width: 100%;
+  margin-top: 8px;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.45);
+  color: var(--cyan-glow);
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.manual-rth-btn:hover {
+  background: rgba(0, 240, 255, 0.25);
+  border-color: var(--cyan-glow);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+  color: #fff;
+}
+
+.manual-rth-btn:active {
+  transform: scale(0.98);
 }
 
 /* Right Panel: Tactical Ground Control Station */
@@ -1049,6 +1694,101 @@ body {
   color: #fff;
   border-color: var(--cyan-glow);
   box-shadow: 0 0 12px rgba(2, 132, 199, 0.4);
+}
+
+.btn-return-home {
+  background: rgba(2, 132, 199, 0.15);
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  color: var(--cyan-glow);
+  font-family: 'Chakra Petch', sans-serif;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+}
+
+.btn-return-home:hover {
+  background: rgba(0, 240, 255, 0.25);
+  border-color: var(--cyan-glow);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.5);
+  color: #fff;
+}
+
+.btn-return-home.active {
+  background: linear-gradient(135deg, #0284c7, #00f0ff);
+  color: #070a12;
+  font-weight: 700;
+  border-color: #00f0ff;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.7);
+}
+
+.footer-rth-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: rgba(10, 16, 28, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: var(--cyan-glow);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+/* Overlaid Flight HUD RTH Status Indicator */
+.hud-rth-indicator {
+  position: absolute;
+  top: 140px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10, 16, 28, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1.5px solid var(--cyan-glow);
+  padding: 6px 16px;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 16px rgba(0, 240, 255, 0.4);
+  z-index: 30;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--cyan-glow);
+  pointer-events: none;
+  animation: rth-glow-pulse 1.4s infinite alternate ease-in-out;
+}
+
+.hud-rth-indicator.arrived {
+  border-color: #10b981;
+  color: #10b981;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 16px rgba(16, 185, 129, 0.5);
+  animation: none;
+}
+
+.rth-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cyan-glow);
+  box-shadow: 0 0 8px var(--cyan-glow);
+  animation: pulse-manual-dot 1s infinite ease-in-out;
+}
+
+.hud-rth-indicator.arrived .rth-pulse-dot {
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: none;
+}
+
+@keyframes rth-glow-pulse {
+  from {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 240, 255, 0.25);
+  }
+  to {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 240, 255, 0.65);
+  }
 }
 
 .flight-stats-group {

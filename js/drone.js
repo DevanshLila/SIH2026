@@ -21,6 +21,10 @@ class DroneModel {
     this.targetRotation = new THREE.Euler(0, 0, 0, 'YXZ');
     this.groundElevation = 0.75;
     
+    // Initial launch / Home base station coordinates & orientation
+    this.homePosition = new THREE.Vector3(0, 0.75, 0);
+    this.homeRotation = new THREE.Euler(0, 0, 0, 'YXZ');
+    
     // Drone telemetry
     this.telemetry = {
       altitudeAGL: 0,
@@ -41,11 +45,13 @@ class DroneModel {
       loraRssi: -74,
       uwbDistance: [4.2, 6.8, 11.5, 9.1],
       npuLoad: 42,
-      heading: 0
+      heading: 0,
+      flightDistanceM: 0
     };
 
     this.create3DModel();
     this.scene.add(this.group);
+    this.saveHomePosition();
   }
 
   create3DModel() {
@@ -96,12 +102,14 @@ class DroneModel {
       const arm = new THREE.Mesh(armGeo, carbonMat);
       arm.rotation.z = Math.PI / 2;
       arm.position.x = 1.1;
+      arm.userData = { thermalType: 'drone_chassis' };
       armGroup.add(arm);
 
       // Motor bell
       const motor = new THREE.Mesh(motorMountGeo, motorMat);
       motor.position.x = 2.15;
       motor.position.y = 0.08;
+      motor.userData = { thermalType: 'drone_motor', baseTemp: 44.0 };
       armGroup.add(motor);
 
       // Propeller (2-blade carbon fiber propeller)
@@ -180,12 +188,21 @@ class DroneModel {
     thermalLens.position.set(0.12, -0.36, 0.32);
     this.group.add(thermalLens);
 
-    // LiDAR Rotating Puck / Dome (Slide 7 Sonar/LiDAR)
-    const lidarGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.18, 20);
-    const lidarMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75 });
+    // LiDAR Rotating Puck / Dome (Velodyne / Ouster multi-beam sensor)
+    const lidarGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.18, 24);
+    const lidarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.25 });
     const lidarPuck = new THREE.Mesh(lidarGeo, lidarMat);
     lidarPuck.position.set(0, -0.52, 0);
     this.group.add(lidarPuck);
+    this.lidarPuck = lidarPuck;
+
+    // Optical Emitter Ring on Puck (Cyan Sensor Origin Glow)
+    const emitterGeo = new THREE.CylinderGeometry(0.225, 0.225, 0.05, 24);
+    const emitterMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.95 });
+    const lidarEmitterMesh = new THREE.Mesh(emitterGeo, emitterMat);
+    lidarEmitterMesh.position.set(0, 0.01, 0);
+    lidarPuck.add(lidarEmitterMesh);
+    this.lidarEmitterMesh = lidarEmitterMesh;
 
     // Gas Sensor Sniffer Snout (MQ-4/MQ-7 sensor chamber)
     const snifferGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.22, 8);
@@ -202,18 +219,11 @@ class DroneModel {
     this.group.add(this.spotlight);
     this.group.add(this.spotlight.target);
 
-    // 6. Dynamic LiDAR Scanning Visual Cone
-    const lidarConeGeo = new THREE.ConeGeometry(8, 22, 24, 1, true);
-    const lidarConeMat = new THREE.MeshBasicMaterial({
-      color: 0x00f0ff,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.18
-    });
-    this.lidarBeam = new THREE.Mesh(lidarConeGeo, lidarConeMat);
-    this.lidarBeam.rotation.x = Math.PI;
-    this.lidarBeam.position.y = -11;
-    this.group.add(this.lidarBeam);
+    // 6. Drone Sensor Mount Rig (decorative scanning cone completely removed)
+    this.scannerVolume = new THREE.Group();
+    this.scannerVolume.visible = false;
+    this.lidarBeam = this.scannerVolume;
+    this.group.add(this.scannerVolume);
   }
 
   update(delta) {
@@ -223,10 +233,7 @@ class DroneModel {
       prop.group.rotation.y += propSpeed * prop.direction * delta;
     });
 
-    // 2. Pulse LiDAR beam rotation
-    if (this.lidarBeam) {
-      this.lidarBeam.rotation.y += 1.8 * delta;
-    }
+    // 2. Flight physics interpolation toward target
 
     // 3. Flight physics interpolation toward target
     if (this.telemetry.isFlying) {
@@ -251,6 +258,7 @@ class DroneModel {
 
       this.group.position.add(step);
       this.velocity.copy(step).divideScalar(Math.max(0.001, delta));
+      this.telemetry.flightDistanceM = (this.telemetry.flightDistanceM || 0) + step.length();
 
       // Calculate roll/pitch based on horizontal velocity (banking/tilting physics)
       const targetRoll = -Math.max(-0.4, Math.min(0.4, this.velocity.x * 0.04));
@@ -291,11 +299,17 @@ class DroneModel {
     this.position.copy(this.group.position);
   }
 
+  saveHomePosition() {
+    this.homePosition.copy(this.group.position);
+    this.homeRotation.copy(this.group.rotation);
+  }
+
   setGroundElevation(elev) {
     this.groundElevation = elev;
     if (!this.telemetry.isFlying) {
       this.group.position.y = this.groundElevation;
       this.position.copy(this.group.position);
+      this.saveHomePosition();
     }
   }
 

@@ -19,7 +19,14 @@ class AutonomousNavigator {
     this.totalSectorAreaSqM = 16000;
     this.isPaused = false;
 
-    // Manual control keys state
+    // Return to Home (RTH) state
+    this.isReturningHome = false;
+    this.rthStatus = null; // null, 'RETURNING TO HOME', 'HOME REACHED'
+    this.wasManualMode = false;
+    this.rthPhase = null; // 'CLIMB', 'TRANSIT', 'DESCENT', 'ARRIVED'
+    this.rthArrivedTimeout = null;
+
+    // Manual control keys state (8 supported controls)
     this.keys = {
       forward: false,
       backward: false,
@@ -31,14 +38,70 @@ class AutonomousNavigator {
       yawRight: false
     };
 
+    // Strict 8-key keyboard mapping
+    this.keyMap = {
+      KeyW: 'forward',
+      KeyS: 'backward',
+      KeyA: 'left',
+      KeyD: 'right',
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      ArrowLeft: 'yawLeft',
+      ArrowRight: 'yawRight'
+    };
+
+    // DOM element IDs for live HUD indicator highlights
+    this.keyElementIds = {
+      forward: { box: 'key-w', item: 'item-w' },
+      backward: { box: 'key-s', item: 'item-s' },
+      left: { box: 'key-a', item: 'item-a' },
+      right: { box: 'key-d', item: 'item-d' },
+      up: { box: 'key-up', item: 'item-up' },
+      down: { box: 'key-down', item: 'item-down' },
+      yawLeft: { box: 'key-left', item: 'item-left' },
+      yawRight: { box: 'key-right', item: 'item-right' }
+    };
+
     this.initKeyboardControls();
     this.generateLawnmowerGrid();
   }
 
+  updateNavButtonsUI(mode) {
+    const navButtons = document.querySelectorAll('.nav-mode-btn');
+    navButtons.forEach(btn => {
+      if (btn.dataset.nav === mode) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
   setNavMode(mode) {
+    if (mode === 'RTH') {
+      this.returnToHome();
+      return;
+    }
+
+    // If cancelling or clearing RTH state by selecting another flight mode
+    if (this.isReturningHome || this.navMode === 'RTH' || this.rthStatus) {
+      this.isReturningHome = false;
+      this.rthStatus = null;
+      this.rthPhase = null;
+      this.wasManualMode = false;
+      if (this.rthArrivedTimeout) {
+        clearTimeout(this.rthArrivedTimeout);
+        this.rthArrivedTimeout = null;
+      }
+      this.updateRthStatusUI(null);
+    }
+
     this.navMode = mode;
     this.currentWaypointIndex = 0;
     this.waypoints = [];
+
+    // Keep footer nav mode buttons in sync
+    this.updateNavButtonsUI(mode);
 
     if (mode === 'GRID') {
       this.drone.telemetry.satellites = 21;
@@ -55,6 +118,22 @@ class AutonomousNavigator {
       this.generateUWBPenetrationPath();
     } else if (mode === 'MANUAL') {
       this.drone.telemetry.flightMode = 'MANUAL TELEOPERATION';
+      if (this.drone.group) {
+        this.drone.targetPosition.copy(this.drone.group.position);
+        this.drone.targetRotation.y = this.drone.group.rotation.y;
+      }
+    }
+
+    // Refresh header text for the newly activated mode
+    const headerText = document.getElementById('header-status-text');
+    if (headerText) {
+      headerText.textContent = this.drone.telemetry.flightMode;
+    }
+
+    if (mode === 'MANUAL') {
+      this.enableManualMode();
+    } else {
+      this.disableManualMode();
     }
   }
 
@@ -120,6 +199,8 @@ class AutonomousNavigator {
 
     if (this.navMode === 'MANUAL') {
       this.handleManualFlight(delta);
+    } else if (this.navMode === 'RTH') {
+      this.handleRthFlight(delta);
     } else {
       this.handleAutonomousWaypointFollow(delta);
     }
@@ -157,8 +238,11 @@ class AutonomousNavigator {
     const climbSpeed = 8.0 * delta;
     const yawRate = 2.0 * delta;
 
-    const forwardVector = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, this.drone.group.rotation.y, 0));
-    const rightVector = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, this.drone.group.rotation.y, 0));
+    // Relative to UAV orientation:
+    // Nose/front is along +Z in drone coordinate system (heading 0 = +Z)
+    // Right axis is along -X (Forward x Up = (0,0,1) x (0,1,0) = (-1,0,0))
+    const forwardVector = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(0, this.drone.group.rotation.y, 0));
+    const rightVector = new THREE.Vector3(-1, 0, 0).applyEuler(new THREE.Euler(0, this.drone.group.rotation.y, 0));
 
     const newTarget = this.drone.targetPosition.clone();
 
@@ -178,52 +262,410 @@ class AutonomousNavigator {
   }
 
   checkObstacleAvoidance() {
-    // Proximity repulsion bubble
-    const dronePos = this.drone.group.position;
-    const minSafeAltitude = 1.2;
+    // Proximity repulsion bubble - ignore during RTH, landing, or when arrived at Home Station
+    if (this.navMode === 'RTH' || this.isReturningHome || this.rthPhase === 'ARRIVED' ||
+        this.drone.telemetry.flightMode === 'HOME REACHED' || this.drone.telemetry.flightMode === 'RETURNING TO HOME' ||
+        this.drone.telemetry.flightMode === 'LANDING' || this.drone.telemetry.flightMode === 'LANDED') {
+      return;
+    }
 
-    if (dronePos.y < minSafeAltitude && this.drone.telemetry.isFlying && this.drone.telemetry.flightMode !== 'LANDING') {
+    const homePos = this.drone.homePosition || new THREE.Vector3(0, this.drone.groundElevation, 0);
+    const dronePos = this.drone.group.position;
+    // Also ignore when positioned at or near Home Station
+    if (Math.hypot(dronePos.x - homePos.x, dronePos.z - homePos.z) < 1.5 && Math.abs(dronePos.y - homePos.y) < 0.6) {
+      return;
+    }
+
+    const minSafeAltitude = 1.2;
+    if (dronePos.y < minSafeAltitude && this.drone.telemetry.isFlying) {
       this.drone.targetPosition.y = minSafeAltitude + 0.5;
     }
   }
 
   returnToHome() {
+    if (this.isReturningHome && this.navMode === 'RTH' && this.rthPhase !== 'ARRIVED') {
+      return; // Already actively returning
+    }
+
+    if (this.rthArrivedTimeout) {
+      clearTimeout(this.rthArrivedTimeout);
+      this.rthArrivedTimeout = null;
+    }
+
+    const wasManual = (this.navMode === 'MANUAL' || this.wasManualMode);
+    this.wasManualMode = wasManual;
+
+    // Stop manual keyboard movement and clear active key highlights
+    this.resetKeys();
+
+    if (wasManual) {
+      // Keep the manual-control key panel visible, but clear all active key highlights
+      const badge = document.getElementById('manual-hud-status-badge');
+      if (badge) {
+        badge.textContent = 'RETURNING TO HOME';
+        badge.style.color = '#00f0ff';
+        badge.style.borderColor = 'rgba(0, 240, 255, 0.6)';
+      }
+    } else {
+      this.disableManualMode();
+    }
+
     this.navMode = 'RTH';
-    this.drone.telemetry.flightMode = 'EMERGENCY RTH';
-    this.waypoints = [
-      new THREE.Vector3(this.drone.group.position.x, 18, this.drone.group.position.z), // Climb clear
-      new THREE.Vector3(0, 18, 0), // Return to origin
-      new THREE.Vector3(0, 0.75, 0) // Land
-    ];
+    this.isReturningHome = true;
+    this.rthStatus = 'RETURNING TO HOME';
+    this.drone.telemetry.flightMode = 'RETURNING TO HOME';
+
+    // Keep nav mode button highlighted
+    this.updateNavButtonsUI('RTH');
+
+    // Display "RETURNING TO HOME" status indicator
+    this.updateRthStatusUI('RETURNING TO HOME');
+
+    // Ensure drone is flying
+    if (!this.drone.telemetry.isFlying) {
+      this.drone.telemetry.isArmed = true;
+      this.drone.telemetry.isFlying = true;
+    }
+
+    const homePos = this.drone.homePosition || new THREE.Vector3(0, this.drone.groundElevation, 0);
+    const currentPos = this.drone.group.position;
+
+    // Check if already at Home Station
+    const horizDist = Math.hypot(currentPos.x - homePos.x, currentPos.z - homePos.z);
+    const vertDist = Math.abs(currentPos.y - homePos.y);
+    if (horizDist < 0.6 && vertDist < 0.5) {
+      this.onHomeReached();
+      return;
+    }
+
+    // Safe clearance altitude to avoid colliding with buildings, trees or terrain
+    this.rthTransitAltitude = Math.max(18.0, Math.max(currentPos.y, homePos.y + 14.0));
+
+    if (currentPos.y < this.rthTransitAltitude - 0.8) {
+      this.rthPhase = 'CLIMB';
+    } else {
+      this.rthPhase = 'TRANSIT';
+    }
+  }
+
+  handleRthFlight(delta) {
+    const homePos = this.drone.homePosition || new THREE.Vector3(0, this.drone.groundElevation, 0);
+    const homeRot = this.drone.homeRotation || new THREE.Euler(0, 0, 0, 'YXZ');
+    const currentPos = this.drone.group.position;
+    const safeAltitude = this.rthTransitAltitude || Math.max(18.0, homePos.y + 14.0);
+
+    if (this.rthPhase === 'CLIMB') {
+      // Step 1: Climb smoothly to safe clearance altitude
+      this.drone.setWaypoint(currentPos.x, safeAltitude, currentPos.z);
+
+      // Smoothly orient heading toward Home Station
+      const dx = homePos.x - currentPos.x;
+      const dz = homePos.z - currentPos.z;
+      if (Math.hypot(dx, dz) > 1.0) {
+        this.drone.targetRotation.y = Math.atan2(dx, dz);
+      }
+
+      if (currentPos.y >= safeAltitude - 0.8) {
+        this.rthPhase = 'TRANSIT';
+      }
+    } else if (this.rthPhase === 'TRANSIT') {
+      // Step 2: Smooth cruise at safe clearance altitude directly above Home Station
+      this.drone.setWaypoint(homePos.x, safeAltitude, homePos.z);
+
+      const horizDist = Math.hypot(currentPos.x - homePos.x, currentPos.z - homePos.z);
+      if (horizDist <= 1.2) {
+        this.rthPhase = 'DESCENT';
+      }
+    } else if (this.rthPhase === 'DESCENT') {
+      // Step 3: Smooth final descent onto designated landing area and align launch orientation
+      this.drone.setWaypoint(homePos.x, homePos.y, homePos.z, homeRot.y);
+
+      const horizDist = Math.hypot(currentPos.x - homePos.x, currentPos.z - homePos.z);
+      const vertDist = Math.abs(currentPos.y - homePos.y);
+      if (horizDist <= 0.35 && vertDist <= 0.25) {
+        this.onHomeReached();
+      }
+    } else if (this.rthPhase === 'ARRIVED') {
+      // Stationed at Home Station landing pad: stop all return movement
+      this.drone.group.position.copy(homePos);
+      this.drone.targetPosition.copy(homePos);
+      this.drone.group.rotation.set(0, homeRot.y, 0);
+      this.drone.targetRotation.set(0, homeRot.y, 0);
+      this.drone.velocity.set(0, 0, 0);
+      this.drone.telemetry.groundSpeed = 0;
+      this.drone.telemetry.verticalSpeed = 0;
+    }
+  }
+
+  onHomeReached() {
+    this.rthPhase = 'ARRIVED';
+    this.isReturningHome = false;
+    this.rthStatus = 'HOME REACHED';
+    this.drone.telemetry.flightMode = 'HOME REACHED';
+
+    const homePos = this.drone.homePosition || new THREE.Vector3(0, this.drone.groundElevation, 0);
+    const homeRot = this.drone.homeRotation || new THREE.Euler(0, 0, 0, 'YXZ');
+
+    // Position UAV at designated landing area and stop return movement
+    this.drone.group.position.copy(homePos);
+    this.drone.targetPosition.copy(homePos);
+    this.drone.group.rotation.set(0, homeRot.y, 0);
+    this.drone.targetRotation.set(0, homeRot.y, 0);
+    this.drone.velocity.set(0, 0, 0);
+    this.drone.telemetry.groundSpeed = 0;
+    this.drone.telemetry.verticalSpeed = 0;
+    this.waypoints = [];
     this.currentWaypointIndex = 0;
+
+    // Display "HOME REACHED" status indicator
+    this.updateRthStatusUI('HOME REACHED');
+
+    // If Return to Home was activated while Manual Mode was active:
+    // return control to the user according to the existing mode behavior
+    if (this.wasManualMode) {
+      setTimeout(() => {
+        if (this.navMode === 'RTH') {
+          this.navMode = 'MANUAL';
+          this.rthStatus = null;
+          this.rthPhase = null;
+          this.wasManualMode = false;
+          this.drone.telemetry.flightMode = 'MANUAL TELEOPERATION';
+          this.updateNavButtonsUI('MANUAL');
+          this.updateRthStatusUI(null);
+          const badge = document.getElementById('manual-hud-status-badge');
+          if (badge) {
+            badge.textContent = 'ACTIVE';
+            badge.style.color = '';
+            badge.style.borderColor = '';
+          }
+          this.resetKeys();
+        }
+      }, 1500);
+    }
+  }
+
+  updateRthStatusUI(status) {
+    const hudIndicator = document.getElementById('hud-rth-indicator');
+    const hudText = document.getElementById('hud-rth-text');
+    const headerText = document.getElementById('header-status-text');
+    const headerDot = document.getElementById('header-status-dot');
+    const footerStatus = document.getElementById('footer-rth-status');
+    const footerText = document.getElementById('footer-rth-text');
+    const manualBadge = document.getElementById('manual-hud-status-badge');
+
+    if (this.rthArrivedTimeout) {
+      clearTimeout(this.rthArrivedTimeout);
+      this.rthArrivedTimeout = null;
+    }
+
+    if (status === 'RETURNING TO HOME') {
+      if (hudIndicator) {
+        hudIndicator.style.display = 'flex';
+        hudIndicator.classList.remove('arrived');
+      }
+      if (hudText) hudText.textContent = 'RETURNING TO HOME';
+      if (headerText) headerText.textContent = 'RETURNING TO HOME';
+      if (headerDot) {
+        headerDot.style.background = '#00f0ff';
+        headerDot.style.boxShadow = '0 0 10px #00f0ff';
+      }
+      if (footerStatus) footerStatus.style.display = 'flex';
+      if (footerText) footerText.textContent = 'RETURNING TO HOME';
+      if (manualBadge) {
+        manualBadge.textContent = 'RETURNING TO HOME';
+        manualBadge.style.color = '#00f0ff';
+      }
+    } else if (status === 'HOME REACHED') {
+      if (hudIndicator) {
+        hudIndicator.style.display = 'flex';
+        hudIndicator.classList.add('arrived');
+      }
+      if (hudText) hudText.textContent = 'HOME REACHED';
+      if (headerText) headerText.textContent = 'HOME REACHED';
+      if (headerDot) {
+        headerDot.style.background = '#10b981';
+        headerDot.style.boxShadow = '0 0 10px #10b981';
+      }
+      if (footerStatus) footerStatus.style.display = 'flex';
+      if (footerText) footerText.textContent = 'HOME REACHED';
+      if (manualBadge) {
+        manualBadge.textContent = 'HOME REACHED';
+        manualBadge.style.color = '#10b981';
+      }
+
+      this.rthArrivedTimeout = setTimeout(() => {
+        if (hudIndicator && this.navMode !== 'RTH') {
+          hudIndicator.style.display = 'none';
+        }
+        if (footerStatus && this.navMode !== 'RTH') {
+          footerStatus.style.display = 'none';
+        }
+      }, 3500);
+    } else {
+      if (hudIndicator) hudIndicator.style.display = 'none';
+      if (footerStatus) footerStatus.style.display = 'none';
+      if (headerText && this.navMode !== 'RTH') {
+        headerText.textContent = this.drone.telemetry.flightMode || 'AUTONOMOUS SAR ACTIVE';
+      }
+      if (headerDot && this.navMode !== 'RTH') {
+        headerDot.style.background = '#10b981';
+        headerDot.style.boxShadow = '0 0 10px #10b981';
+      }
+      if (manualBadge && this.navMode === 'MANUAL') {
+        manualBadge.textContent = 'ACTIVE';
+        manualBadge.style.color = '';
+        manualBadge.style.borderColor = '';
+      }
+    }
+  }
+
+  enableManualMode() {
+    const panel = document.getElementById('manual-control-panel');
+    if (panel) {
+      panel.style.display = 'block';
+    }
+    const badge = document.getElementById('manual-hud-status-badge');
+    if (badge) {
+      badge.textContent = 'ACTIVE';
+      badge.style.color = '';
+      badge.style.borderColor = '';
+    }
+    this.resetKeys();
+    this.bindHudPointerControls();
+  }
+
+  disableManualMode() {
+    const panel = document.getElementById('manual-control-panel');
+    if (panel) {
+      panel.style.display = 'none';
+    }
+    this.resetKeys();
+  }
+
+  resetKeys() {
+    for (const action of Object.keys(this.keys)) {
+      this.keys[action] = false;
+      this.updateKeyHighlight(action, false);
+    }
+  }
+
+  getActionForEvent(e) {
+    if (this.keyMap[e.code]) {
+      return this.keyMap[e.code];
+    }
+    if (e.key === 'w' || e.key === 'W') return 'forward';
+    if (e.key === 's' || e.key === 'S') return 'backward';
+    if (e.key === 'a' || e.key === 'A') return 'left';
+    if (e.key === 'd' || e.key === 'D') return 'right';
+    if (e.key === 'ArrowUp') return 'up';
+    if (e.key === 'ArrowDown') return 'down';
+    if (e.key === 'ArrowLeft') return 'yawLeft';
+    if (e.key === 'ArrowRight') return 'yawRight';
+    return null;
+  }
+
+  updateKeyHighlight(action, isPressed) {
+    const ids = this.keyElementIds[action];
+    if (!ids) return;
+
+    const box = document.getElementById(ids.box);
+    const item = document.getElementById(ids.item);
+
+    if (isPressed) {
+      if (box) box.classList.add('active');
+      if (item) item.classList.add('active');
+    } else {
+      if (box) box.classList.remove('active');
+      if (item) item.classList.remove('active');
+    }
+  }
+
+  handleKeyDown(e) {
+    if (this.navMode !== 'MANUAL') return;
+
+    // Prevent unwanted browser scrolling from arrow keys while Manual Mode is active
+    const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) ||
+                    ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+    if (isArrow) {
+      e.preventDefault();
+    }
+
+    // Ignore key presses if user is focused inside an input/select/textarea
+    const targetTag = e.target && e.target.tagName;
+    if (targetTag === 'INPUT' || targetTag === 'SELECT' || targetTag === 'TEXTAREA') {
+      return;
+    }
+
+    const action = this.getActionForEvent(e);
+    if (!action) return;
+
+    // Handle repeated keydown correctly: holding a key does not duplicate commands
+    if (e.repeat || this.keys[action]) {
+      return;
+    }
+
+    this.keys[action] = true;
+    this.updateKeyHighlight(action, true);
+  }
+
+  handleKeyUp(e) {
+    if (this.navMode !== 'MANUAL') return;
+
+    const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) ||
+                    ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+    if (isArrow) {
+      e.preventDefault();
+    }
+
+    const action = this.getActionForEvent(e);
+    if (!action) return;
+
+    this.keys[action] = false;
+    this.updateKeyHighlight(action, false);
+  }
+
+  bindHudPointerControls() {
+    const items = document.querySelectorAll('.key-item[data-action]');
+    items.forEach(item => {
+      if (item._hasPointerBound) return;
+      item._hasPointerBound = true;
+
+      const action = item.dataset.action;
+      if (!action) return;
+
+      const onPress = (e) => {
+        if (this.navMode !== 'MANUAL') return;
+        e.preventDefault();
+        this.keys[action] = true;
+        this.updateKeyHighlight(action, true);
+      };
+
+      const onRelease = (e) => {
+        if (this.navMode !== 'MANUAL') return;
+        e.preventDefault();
+        this.keys[action] = false;
+        this.updateKeyHighlight(action, false);
+      };
+
+      item.addEventListener('mousedown', onPress);
+      item.addEventListener('mouseup', onRelease);
+      item.addEventListener('mouseleave', onRelease);
+      item.addEventListener('touchstart', onPress, { passive: false });
+      item.addEventListener('touchend', onRelease, { passive: false });
+      item.addEventListener('touchcancel', onRelease, { passive: false });
+    });
   }
 
   initKeyboardControls() {
-    window.addEventListener('keydown', (e) => {
-      switch (e.code) {
-        case 'KeyW': this.keys.forward = true; break;
-        case 'KeyS': this.keys.backward = true; break;
-        case 'KeyA': this.keys.left = true; break;
-        case 'KeyD': this.keys.right = true; break;
-        case 'Space': case 'ArrowUp': this.keys.up = true; break;
-        case 'ShiftLeft': case 'ArrowDown': this.keys.down = true; break;
-        case 'KeyQ': case 'ArrowLeft': this.keys.yawLeft = true; break;
-        case 'KeyE': case 'ArrowRight': this.keys.yawRight = true; break;
+    window.addEventListener('keydown', (e) => this.handleKeyDown(e));
+    window.addEventListener('keyup', (e) => this.handleKeyUp(e));
+    window.addEventListener('blur', () => {
+      if (this.navMode === 'MANUAL') {
+        this.resetKeys();
       }
     });
 
-    window.addEventListener('keyup', (e) => {
-      switch (e.code) {
-        case 'KeyW': this.keys.forward = false; break;
-        case 'KeyS': this.keys.backward = false; break;
-        case 'KeyA': this.keys.left = false; break;
-        case 'KeyD': this.keys.right = false; break;
-        case 'Space': case 'ArrowUp': this.keys.up = false; break;
-        case 'ShiftLeft': case 'ArrowDown': this.keys.down = false; break;
-        case 'KeyQ': case 'ArrowLeft': this.keys.yawLeft = false; break;
-        case 'KeyE': case 'ArrowRight': this.keys.yawRight = false; break;
-      }
-    });
+    this.bindHudPointerControls();
   }
 }
 

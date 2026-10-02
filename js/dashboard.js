@@ -238,9 +238,13 @@ class TacticalGcsDashboard {
 
       placedLabels.push({ x: myLabelX, y: myLabelY });
       const triageClass = det.triage ? det.triage.toLowerCase() : 'yellow';
+      const obstructedClass = det.isObstructed ? 'obstructed' : '';
+      const acquiringClass = det.isAcquiring ? 'acquiring-lock' : '';
+      const thermalIcon = det.isObstructed ? '<span class="ai-thermal-indicator" title="Thermal Hotspot Detected">🔥</span>' : '';
+      const lockBanner = det.isAcquiring ? '<span class="ai-lock-reticle mono">[LOCK]</span>' : '';
 
       html += `
-        <div class="ai-bbox ${det.type}" style="left:${left.toFixed(1)}px; top:${top.toFixed(1)}px; width:${det.width.toFixed(1)}px; height:${det.height.toFixed(1)}px;">
+        <div class="ai-bbox ${det.type} ${obstructedClass} ${acquiringClass}" style="left:${left.toFixed(1)}px; top:${top.toFixed(1)}px; width:${det.width.toFixed(1)}px; height:${det.height.toFixed(1)}px;">
           <div class="ai-bbox-corner top-left"></div>
           <div class="ai-bbox-corner top-right"></div>
           <div class="ai-bbox-corner bottom-left"></div>
@@ -249,7 +253,11 @@ class TacticalGcsDashboard {
             <div class="ai-label-title">
               <span class="ai-status-dot ${triageClass}"></span>
               <span class="ai-label-code">${det.label}</span>
+              ${lockBanner}
+              ${thermalIcon}
             </div>
+            ${det.stateLabel ? `<div class="ai-label-state">${det.stateLabel}</div>` : ''}
+            ${det.lidarFusion ? `<div class="ai-label-lidar-fusion">${det.lidarFusion}</div>` : ''}
             ${det.sublabel ? `<span class="ai-label-sub">${det.sublabel}</span>` : ''}
           </div>
         </div>
@@ -448,6 +456,17 @@ class TacticalGcsDashboard {
     if (btnPayload) {
       btnPayload.addEventListener('click', () => this.dropPayload());
     }
+
+    // LiDAR Visualization Mode Buttons
+    const lidarVisBtns = document.querySelectorAll('.lidar-vis-btn');
+    lidarVisBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.vismode;
+        if (this.sensors && typeof this.sensors.setLidarVisMode === 'function') {
+          this.sensors.setLidarVisMode(mode);
+        }
+      });
+    });
   }
 }
 
