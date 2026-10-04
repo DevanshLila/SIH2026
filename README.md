@@ -10,20 +10,29 @@
 
 ---
 
-## 🌐 Live Online Simulation (For SIH Judges & Evaluators)
-
-**🚀 Official Public Live Demo Link:**  
-👉 **[https://devanshlila.github.io/SIH2026/](https://devanshlila.github.io/SIH2026/)**
-
-> **Note for Evaluators:**
-> - Runs completely in the browser (Chrome, Edge, Safari, Firefox) on laptop, tablet, or smartphone.
-> - **Zero installation or local server required!**
-> - Hardware-accelerated 3D WebGL (Three.js r128), real-time LiDAR raycasting, radiometric FLIR Thermal IR, and Edge AI YOLOv8 perception simulation.
+## ⚡ RUN SIMULATION (ONLINE & INSTANT ACCESS)
 
 <div align="center">
-  <img src="simulation_qr_code.png" alt="Scan to Launch Simulation" width="180"/>
-  <p><em>Scan with any mobile camera / QR scanner to launch simulation instantly</em></p>
+
+[![RUN SIMULATION](https://img.shields.io/badge/⚡%20RUN%20SIMULATION-LAUNCH%20NOW%20(NO%20INSTALL)-00f0ff?style=for-the-badge&logo=googlechrome&logoColor=070a12)](https://devanshlila.github.io/SIH2026/)
+[![GitHub Pages](https://img.shields.io/badge/DEPLOYED-GITHUB%20PAGES-10b981?style=for-the-badge&logo=github)](https://devanshlila.github.io/SIH2026/)
+
+<h3>👉 <a href="https://devanshlila.github.io/SIH2026/">https://devanshlila.github.io/SIH2026/</a> 👈</h3>
+
+<p><strong>Scan with any phone camera or click the link above to run the simulation instantly:</strong></p>
+
+<a href="https://devanshlila.github.io/SIH2026/">
+  <img src="run_simulation_qr.png" alt="RUN SIMULATION - Scan with Phone Camera" width="320" style="border-radius:12px; box-shadow: 0 4px 20px rgba(0, 240, 255, 0.3);"/>
+</a>
+
+<p><em>(Tip: You can copy the image above directly into your SIH Presentation PPT!)</em></p>
+
 </div>
+
+> **📌 Instructions for SIH Judges & Evaluators:**
+> - **Zero Installation Required:** Runs 100% in any modern browser (Chrome, Edge, Safari, Firefox) on laptop, tablet, or smartphone.
+> - **Full Features Active:** Real-time 3D LiDAR SLAM, Radiometric FLIR Thermal IR, Gen-3 Night Vision, 4K Optical YOLOv8 AI, 3 Disaster Environments, Dynamic Weather, and Obstacle Collision Avoidance.
+> - **Automated Walkthrough:** Click **"⭐ SIH Presentation Mode"** inside the simulation for an automated 6-step guided showcase!
 
 ---
 
