@@ -38,7 +38,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         url = sys.argv[1]
     else:
-        url = input("Enter your deployed simulation URL (e.g., https://yourname.github.io/disaster-rescue-drone/): ").strip()
-        if not url:
-            url = "https://team-pegasus-sih2026.github.io/disaster-rescue-uav/"
+        url = "https://devanshlila.github.io/SIH2026/"
     generate_qr(url)

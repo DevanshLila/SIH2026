@@ -10,6 +10,23 @@
 
 ---
 
+## 🌐 Live Online Simulation (For SIH Judges & Evaluators)
+
+**🚀 Official Public Live Demo Link:**  
+👉 **[https://devanshlila.github.io/SIH2026/](https://devanshlila.github.io/SIH2026/)**
+
+> **Note for Evaluators:**
+> - Runs completely in the browser (Chrome, Edge, Safari, Firefox) on laptop, tablet, or smartphone.
+> - **Zero installation or local server required!**
+> - Hardware-accelerated 3D WebGL (Three.js r128), real-time LiDAR raycasting, radiometric FLIR Thermal IR, and Edge AI YOLOv8 perception simulation.
+
+<div align="center">
+  <img src="simulation_qr_code.png" alt="Scan to Launch Simulation" width="180"/>
+  <p><em>Scan with any mobile camera / QR scanner to launch simulation instantly</em></p>
+</div>
+
+---
+
 ## 🌟 Executive Summary
 
 In the critical "Golden Hours" following major disasters (earthquakes, flash floods, industrial chemical fires, landslides), ground rescue squads face severe hazards: toxic gas clouds, active fires, unstable collapsing structures, and completely severed cellular/GPS signals.
