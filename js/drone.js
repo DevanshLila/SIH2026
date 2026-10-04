@@ -338,6 +338,13 @@ class DroneModel {
       if (child.isLight || (this.spotlight && child === this.spotlight.target)) return;
       // Keep decorative scanning volume hidden per sensors.js requirement
       if (child === this.scannerVolume) return;
+      // Keep LiDAR SLAM volumetric scan objects matched to LiDAR sensor mode
+      if (child.userData && child.userData.isLidarObject) {
+        const app = window.droneApp;
+        const isLidar = app && app.sensors && app.sensors.sensorMode === 'LIDAR';
+        child.visible = isLidar;
+        return;
+      }
       child.visible = visible;
     });
   }
