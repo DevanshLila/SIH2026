@@ -14,6 +14,7 @@ class App {
 
     this.drone = null;
     this.environment = null;
+    this.weather = null;
     this.sensors = null;
     this.navigator = null;
     this.gcs = null;
@@ -113,7 +114,11 @@ class App {
     this.gcs = new TacticalGcsDashboard(this.drone, this.environment, this.sensors, this.navigator);
     window.gcs = this.gcs;
 
-    // 6. 2D Tactical GIS Map
+    // 6. Dynamic Environmental Weather System
+    this.weather = new WeatherSystem(this.scene, this.drone, this.gcs);
+    window.weather = this.weather;
+
+    // 7. 2D Tactical GIS Map
     this.gisMap = new TacticalGisMap('gis-canvas', this.drone, this.environment, this.navigator);
 
     // Auto-takeoff on startup to immediately engage judges
@@ -161,7 +166,7 @@ class App {
       scenarioSelect.addEventListener('change', (e) => {
         const scenario = e.target.value;
         this.environment.buildScenario(scenario);
-        this.navigator.setNavMode('GRID');
+        this.navigator.setNavMode('SPIRAL');
         this.gisMap.trail = [];
         this.sensors.pointHistory = [];
         if (this.gcs) this.gcs.updateTriageTable();
@@ -172,6 +177,14 @@ class App {
     const btnDayNight = document.getElementById('btn-day-night');
     if (btnDayNight) {
       btnDayNight.addEventListener('click', () => this.toggleDayNightMode());
+    }
+
+    // Dynamic Weather Selector
+    const weatherSelect = document.getElementById('select-weather');
+    if (weatherSelect) {
+      weatherSelect.addEventListener('change', (e) => {
+        if (this.weather) this.weather.setWeather(e.target.value);
+      });
     }
 
     // Emergency Takeoff / Land Toggle
@@ -223,6 +236,110 @@ class App {
       if (closeBtn) closeBtn.addEventListener('click', () => archModal.classList.remove('active'));
     }
 
+    // GPS Disaster Sector Modal & Mission Upload
+    const btnOpenGps = document.getElementById('btn-open-gps-modal');
+    const gpsModal = document.getElementById('gps-modal');
+    const btnCloseGps = document.getElementById('btn-close-gps-modal');
+    const btnCancelGps = document.getElementById('btn-cancel-gps-modal');
+    const btnSubmitGps = document.getElementById('btn-submit-gps-upload');
+
+    const openGps = () => gpsModal && gpsModal.classList.add('active');
+    const closeGps = () => gpsModal && gpsModal.classList.remove('active');
+
+    if (btnOpenGps) btnOpenGps.addEventListener('click', openGps);
+    if (btnCloseGps) btnCloseGps.addEventListener('click', closeGps);
+    if (btnCancelGps) btnCancelGps.addEventListener('click', closeGps);
+
+    // Preset Buttons in GPS Modal
+    const presetGpsBtns = document.querySelectorAll('.preset-gps-btn');
+    presetGpsBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lat = parseFloat(btn.dataset.lat);
+        const lng = parseFloat(btn.dataset.lng);
+        const w = parseFloat(btn.dataset.w);
+        const l = parseFloat(btn.dataset.l);
+        const alt = parseFloat(btn.dataset.alt);
+        const name = btn.dataset.name;
+
+        document.getElementById('input-gps-lat').value = lat.toFixed(6);
+        document.getElementById('input-gps-lng').value = lng.toFixed(6);
+        document.getElementById('input-gps-w').value = w;
+        document.getElementById('input-gps-l').value = l;
+        document.getElementById('input-gps-alt').value = alt;
+
+        // Auto upload to UAV
+        this.navigator.feedGpsTargetArea({
+          centerLat: lat,
+          centerLng: lng,
+          widthMeters: w,
+          lengthMeters: l,
+          altitude: alt,
+          sectorName: name
+        });
+        closeGps();
+      });
+    });
+
+    // Submit Custom GPS Coordinates
+    if (btnSubmitGps) {
+      btnSubmitGps.addEventListener('click', () => {
+        const lat = parseFloat(document.getElementById('input-gps-lat').value) || 26.144500;
+        const lng = parseFloat(document.getElementById('input-gps-lng').value) || 91.736200;
+        const w = parseFloat(document.getElementById('input-gps-w').value) || 50;
+        const l = parseFloat(document.getElementById('input-gps-l').value) || 50;
+        const alt = parseFloat(document.getElementById('input-gps-alt').value) || 14;
+        const spacing = parseFloat(document.getElementById('input-gps-spacing').value) || 9;
+
+        this.navigator.feedGpsTargetArea({
+          centerLat: lat,
+          centerLng: lng,
+          widthMeters: w,
+          lengthMeters: l,
+          altitude: alt,
+          laneSpacing: spacing,
+          sectorName: `FED GPS SECTOR (${lat.toFixed(4)}°N)`
+        });
+        closeGps();
+      });
+    }
+
+    // File Upload Handler (KML, Waypoints, JSON)
+    const fileInput = document.getElementById('input-gps-file');
+    const fileNameDisplay = document.getElementById('gps-file-name');
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (fileNameDisplay) fileNameDisplay.textContent = `✓ ${file.name} loaded`;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            let lat = 26.145200;
+            let lng = 91.737100;
+            if (file.name.endsWith('.json')) {
+              const data = JSON.parse(event.target.result);
+              if (data.lat) lat = data.lat;
+              if (data.lng) lng = data.lng;
+            }
+            document.getElementById('input-gps-lat').value = lat.toFixed(6);
+            document.getElementById('input-gps-lng').value = lng.toFixed(6);
+            this.navigator.feedGpsTargetArea({
+              centerLat: lat,
+              centerLng: lng,
+              widthMeters: 55,
+              lengthMeters: 55,
+              sectorName: `FILE: ${file.name}`
+            });
+            setTimeout(closeGps, 600);
+          } catch (err) {
+            console.warn('File parse error', err);
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
+
     // SIH Presentation Tour Mode
     const btnTour = document.getElementById('btn-start-tour');
     if (btnTour) {
@@ -261,57 +378,63 @@ class App {
   }
 
   updateCamera() {
+    if (!this.drone || !this.drone.group) return;
     const dronePos = this.drone.group.position;
-    const yaw = this.drone.group.rotation.y;
+    const px = Number.isFinite(dronePos.x) ? dronePos.x : 0;
+    const py = Number.isFinite(dronePos.y) ? dronePos.y : 14;
+    const pz = Number.isFinite(dronePos.z) ? dronePos.z : 0;
+    const yaw = Number.isFinite(this.drone.group.rotation.y) ? this.drone.group.rotation.y : 0;
 
     if (this.cameraMode === 'FOLLOW') {
       // Third-person smooth follow
       const offsetDist = 14;
       const offsetHeight = 6.5;
-      const targetCamX = dronePos.x - Math.sin(yaw) * offsetDist;
-      const targetCamZ = dronePos.z - Math.cos(yaw) * offsetDist;
-      const targetCamY = dronePos.y + offsetHeight;
+      const targetCamX = px - Math.sin(yaw) * offsetDist;
+      const targetCamZ = pz - Math.cos(yaw) * offsetDist;
+      const targetCamY = py + offsetHeight;
 
-      this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
-      this.camera.lookAt(dronePos.x, dronePos.y + 1.0, dronePos.z);
+      if (Number.isFinite(targetCamX) && Number.isFinite(targetCamY) && Number.isFinite(targetCamZ)) {
+        this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
+      }
+      this.camera.lookAt(px, py + 1.0, pz);
     } else if (this.cameraMode === 'FPV') {
       // First Person Gimbal View looking forward-down
-      this.camera.position.set(dronePos.x, dronePos.y - 0.35, dronePos.z);
+      this.camera.position.set(px, py - 0.35, pz);
       const lookDist = 25;
       const targetLook = new THREE.Vector3(
-        dronePos.x + Math.sin(yaw) * lookDist,
-        Math.max(0, dronePos.y - 12),
-        dronePos.z + Math.cos(yaw) * lookDist
+        px + Math.sin(yaw) * lookDist,
+        Math.max(0, py - 12),
+        pz + Math.cos(yaw) * lookDist
       );
       this.camera.lookAt(targetLook);
     } else if (this.cameraMode === 'TOPDOWN') {
       // Orthographic survey view from 45m altitude
-      this.camera.position.lerp(new THREE.Vector3(dronePos.x, 48, dronePos.z + 0.1), 0.1);
-      this.camera.lookAt(dronePos.x, 0, dronePos.z);
+      this.camera.position.lerp(new THREE.Vector3(px, 48, pz + 0.1), 0.1);
+      this.camera.lookAt(px, 0, pz);
     } else if (this.cameraMode === 'ORBIT') {
       // Slow rotation around drone
       this.orbitAngle += 0.005;
       const r = 20;
       this.camera.position.set(
-        dronePos.x + Math.cos(this.orbitAngle) * r,
-        dronePos.y + 9,
-        dronePos.z + Math.sin(this.orbitAngle) * r
+        px + Math.cos(this.orbitAngle) * r,
+        py + 9,
+        pz + Math.sin(this.orbitAngle) * r
       );
-      this.camera.lookAt(dronePos);
+      this.camera.lookAt(px, py, pz);
     }
 
     // Inset PIP Camera follows opposite perspective (FPV if follow, or Topdown)
     if (this.pipCamera) {
       if (this.cameraMode === 'FOLLOW') {
-        this.pipCamera.position.set(dronePos.x, dronePos.y - 0.3, dronePos.z);
+        this.pipCamera.position.set(px, py - 0.3, pz);
         this.pipCamera.lookAt(
-          dronePos.x + Math.sin(yaw) * 20,
-          Math.max(0, dronePos.y - 10),
-          dronePos.z + Math.cos(yaw) * 20
+          px + Math.sin(yaw) * 20,
+          Math.max(0, py - 10),
+          pz + Math.cos(yaw) * 20
         );
       } else {
-        this.pipCamera.position.set(dronePos.x, 40, dronePos.z + 0.1);
-        this.pipCamera.lookAt(dronePos.x, 0, dronePos.z);
+        this.pipCamera.position.set(px, 40, pz + 0.1);
+        this.pipCamera.lookAt(px, 0, pz);
       }
     }
   }
@@ -325,11 +448,11 @@ class App {
 
     const steps = [
       {
-        text: '📍 STEP 1/6: Autonomous Takeoff & ROS2 Lawnmower Coverage Grid Initialized',
+        text: '📍 STEP 1/6: Autonomous Takeoff & Circular Spiral Recon Search Initialized',
         action: () => {
           this.cameraMode = 'FOLLOW';
           this.sensors.setSensorMode('RGB');
-          this.navigator.setNavMode('GRID');
+          this.navigator.setNavMode('SPIRAL');
           this.drone.takeoff(15);
         },
         duration: 5000
@@ -409,29 +532,29 @@ class App {
 
     if (this.isNightMode) {
       if (btn) btn.innerHTML = '🌙 Night Mode';
-      this.scene.background.setHex(0x020409);
-      if (this.scene.fog) {
-        this.scene.fog.color.setHex(0x020409);
-        this.scene.fog.density = 0.016;
+      this.scene.background.setHex(0x071120); // Deep moonlit indigo night sky
+      if (this.scene.fog && (!this.weather || this.weather.currentMode === 'clear')) {
+        this.scene.fog.color.setHex(0x071120);
+        this.scene.fog.density = 0.0055; // Crisp, crystal clear night atmosphere
       }
 
-      this.ambientLight.color.setHex(0x0f172a);
-      this.ambientLight.intensity = 0.22;
+      this.ambientLight.color.setHex(0x38527a); // Luminous cool blue ambient fill
+      this.ambientLight.intensity = 0.95; // Everything clearly visible and sharp!
 
-      this.sunLight.color.setHex(0x1e293b);
-      this.sunLight.intensity = 0.35; // Faint moonlight
+      this.sunLight.color.setHex(0xa5c9eb); // Directional silver moonlight
+      this.sunLight.intensity = 1.35; // Sharp moonlit highlights & casting shadows
 
-      this.hemiLight.color.setHex(0x1e293b);
-      this.hemiLight.groundColor.setHex(0x020409);
-      this.hemiLight.intensity = 0.25;
+      this.hemiLight.color.setHex(0x38bdf8);
+      this.hemiLight.groundColor.setHex(0x1e293b);
+      this.hemiLight.intensity = 0.8;
 
-      // Intelligent Night Mode UAV reaction: Auto-spotlight
+      // Intelligent Night Mode UAV reaction: High-power Searchlight & Floodlight
       this.drone.toggleSpotlight(true);
       this.environment.setNightMode(true);
 
       // Display prompt
       if (toast && toastText) {
-        toastText.textContent = '🌙 Night Mode: Use FLIR Thermal IR or NVG Mode to detect survivors through pitch darkness!';
+        toastText.textContent = '🌙 Lunar Night Mode: High-power searchlight active. Switch to NVG or FLIR Thermal for tactical night vision!';
         toast.style.display = 'flex';
         setTimeout(() => {
           if (!this.tourActive && toast) toast.style.display = 'none';
@@ -440,7 +563,7 @@ class App {
     } else {
       if (btn) btn.innerHTML = '☀️ Day Mode';
       this.scene.background.setHex(0x0a1426);
-      if (this.scene.fog) {
+      if (this.scene.fog && (!this.weather || this.weather.currentMode === 'clear')) {
         this.scene.fog.color.setHex(0x0a1426);
         this.scene.fog.density = 0.009;
       }
@@ -466,22 +589,29 @@ class App {
     const delta = Math.min(0.1, this.clock.getDelta());
 
     // 1. Update Subsystems
-    this.drone.update(delta);
-    this.environment.update(delta);
-    this.navigator.update(delta);
-    this.sensors.update(delta);
-    this.gcs.update(delta);
-    this.gisMap.update(delta);
+    try {
+      if (this.drone) this.drone.update(delta);
+      if (this.environment) this.environment.update(delta);
+      if (this.weather && this.drone) this.weather.update(delta, this.drone.position);
+      if (this.navigator) this.navigator.update(delta);
+      if (this.sensors) this.sensors.update(delta);
+      if (this.gcs) this.gcs.update(delta);
+      if (this.gisMap) this.gisMap.update(delta);
 
-    // 2. Camera tracking
-    this.updateCamera();
+      // 2. Camera tracking
+      this.updateCamera();
 
-    // 3. Render WebGL scene
-    this.renderer.render(this.scene, this.camera);
+      // 3. Render WebGL scene
+      if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+      }
 
-    // 4. Render Inset PIP scene
-    if (this.pipRenderer && this.pipCamera) {
-      this.pipRenderer.render(this.scene, this.pipCamera);
+      // 4. Render Inset PIP scene
+      if (this.pipRenderer && this.pipCamera && this.scene) {
+        this.pipRenderer.render(this.scene, this.pipCamera);
+      }
+    } catch (err) {
+      console.error('Simulation loop error:', err);
     }
   }
 }

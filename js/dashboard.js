@@ -80,6 +80,25 @@ class TacticalGcsDashboard {
     } catch (e) {}
   }
 
+  playProximityBeep() {
+    if (!this.audioContext || this.isMuted) return;
+    if (this._lastProxBeep && Date.now() - this._lastProxBeep < 900) return;
+    this._lastProxBeep = Date.now();
+    try {
+      this.audioContext.resume();
+      const osc = this.audioContext.createOscillator();
+      const gain = this.audioContext.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1100, this.audioContext.currentTime);
+      gain.gain.setValueAtTime(0.07, this.audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start();
+      osc.stop(this.audioContext.currentTime + 0.12);
+    } catch (e) {}
+  }
+
   toggleSound() {
     this.isMuted = !this.isMuted;
     const btn = document.getElementById('btn-sound-toggle');
