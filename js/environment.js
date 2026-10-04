@@ -178,6 +178,11 @@ class DisasterEnvironment {
     // 6. Build scenario-specific weather overlays and re-apply active weather
     this.buildWeatherOverlaysForScenario(scenarioType);
     this.setWeather(this.currentWeather);
+
+    // 7. Re-apply authentic 3D LiDAR SLAM tactical vision mode if active
+    if (this.isLidarVision) {
+      this.setLidarVisionMode(true);
+    }
   }
 
   createHomeStationMarker(position, rotation) {
@@ -6824,17 +6829,29 @@ class DisasterEnvironment {
     // 1. Dark Tactical SLAM Void Background & Atmospheric Fog
     if (this.scene) {
       if (enable) {
-        if (!this.savedSceneBackground) {
-          this.savedSceneBackground = this.scene.background ? this.scene.background.clone() : new THREE.Color(0x040814);
-          this.savedSceneFog = this.scene.fog ? { color: this.scene.fog.color.clone(), density: this.scene.fog.density } : null;
+        if (!this.savedSceneBackground || this.savedSceneBackground.getHex() === 0x010307) {
+          if (this.scene.background && this.scene.background.getHex() !== 0x010307) {
+            this.savedSceneBackground = this.scene.background.clone();
+          } else {
+            this.savedSceneBackground = new THREE.Color(0x040814);
+          }
+          if (this.scene.fog && this.scene.fog.color.getHex() !== 0x010307) {
+            this.savedSceneFog = { color: this.scene.fog.color.clone(), density: this.scene.fog.density };
+          } else {
+            this.savedSceneFog = null;
+          }
         }
         this.scene.background = new THREE.Color(0x010307); // Pitch black tactical void
         this.scene.fog = new THREE.FogExp2(0x010307, 0.016);
-      } else if (this.savedSceneBackground) {
-        this.scene.background = this.savedSceneBackground.clone();
+      } else {
+        if (this.savedSceneBackground) {
+          this.scene.background = this.savedSceneBackground.clone();
+        }
         if (this.savedSceneFog) {
           this.scene.fog = new THREE.FogExp2(this.savedSceneFog.color.getHex(), this.savedSceneFog.density);
         }
+        this.savedSceneBackground = null;
+        this.savedSceneFog = null;
       }
     }
 

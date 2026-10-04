@@ -266,7 +266,8 @@ class SensorFusionEngine {
 
     // 1. Update Ground Range Rings Position & Sweep Line
     if (this.lidarRangeRings) {
-      this.lidarRangeRings.position.set(dronePos.x, 0.05, dronePos.z);
+      const groundY = (this.environment && this.environment.currentScenario === 'flash_flood') ? 1.52 : 0.05;
+      this.lidarRangeRings.position.set(dronePos.x, groundY, dronePos.z);
     }
     this.lidarScanAngle += 5.5 * delta;
     if (this.lidarSweepLine) {

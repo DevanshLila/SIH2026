@@ -689,6 +689,11 @@ class App {
       this.sensors.gasReading.peakPpm = 18;
       this.sensors.gasReading.type = 'BASELINE ATMOSPHERE';
       this.sensors.gasReading.status = 'NORMAL';
+      if (this.sensors.sensorMode === 'LIDAR') {
+        if (this.environment && typeof this.environment.setLidarVisionMode === 'function') {
+          this.environment.setLidarVisionMode(true);
+        }
+      }
       if (this.sensors.thermalEngine && this.sensors.sensorMode === 'THERMAL') {
         this.sensors.thermalEngine.onScenarioChanged();
       }
@@ -1531,6 +1536,17 @@ class App {
     // If FLIR Thermal IR mode is active, maintain radiometric FLIR dark atmosphere
     if (this.sensors && this.sensors.sensorMode === 'THERMAL' && this.sensors.thermalEngine) {
       this.sensors.thermalEngine.onAtmosphereChanged();
+    }
+
+    // If 3D LiDAR SLAM mode is active, maintain authentic tactical SLAM void atmosphere
+    if (this.sensors && this.sensors.sensorMode === 'LIDAR') {
+      if (this.environment) {
+        this.environment.savedSceneBackground = this.scene.background ? this.scene.background.clone() : null;
+        this.environment.savedSceneFog = this.scene.fog ? { color: this.scene.fog.color.clone(), density: this.scene.fog.density } : null;
+        if (typeof this.environment.setLidarVisionMode === 'function') {
+          this.environment.setLidarVisionMode(true);
+        }
+      }
     }
 
     // Update HUD Tactical Disaster Tag

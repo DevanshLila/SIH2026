@@ -267,8 +267,8 @@ try:
     assert 'EVACUATION REQUIRED' in gas_states_found, "Must have EVACUATION REQUIRED!"
     assert 'SURVIVOR — SAFE ZONE' in gas_states_found, "Must have SURVIVOR — SAFE ZONE!"
 
-    # 6. Rebuilt 3D LiDAR SLAM System Verification
-    print("\n=== STEP 6: 3D LiDAR SLAM System Rebuild Verification ===")
+    # 6. Authentic 3D LiDAR SLAM System Verification (Himanshu Multi-Beam Architecture)
+    print("\n=== STEP 6: Authentic 3D LiDAR SLAM System Verification ===")
     # Switch back to earthquake and switch to LIDAR mode
     eval_js(s, "window.droneApp.setScenario('earthquake')")
     time.sleep(0.5)
@@ -277,133 +277,123 @@ try:
 
     lidar_state = eval_js(s, """(() => {
         const s = window.droneApp.sensors;
-        const panel = document.getElementById('lidar-slam-panel');
+        const hud = document.getElementById('lidar-hud-overlay');
+        const legacyPanel = document.getElementById('lidar-slam-panel');
+        const env = window.droneApp.environment;
+        let cyanCount = 0;
+        env.environmentGroup.traverse(m => {
+            if (m.isMesh && m.material && m.material.color && m.material.color.getHex() === 0x06b6d4) {
+                cyanCount++;
+            }
+        });
+
         return {
             mode: s.sensorMode,
-            panelVisible: panel ? (panel.style.display !== 'none') : false,
-            hasScanRays: !!s.lidarScanRays,
-            scanRaysVisible: s.lidarScanRays ? s.lidarScanRays.visible : false,
-            hasImpactPoints: !!s.lidarImpactPoints,
-            impactPointsVisible: s.lidarImpactPoints ? s.lidarImpactPoints.visible : false,
+            hudVisible: hud ? (hud.style.display !== 'none') : false,
+            legacyPanelHidden: !legacyPanel || legacyPanel.style.display === 'none',
+            hasFrustum: !!s.lidarVolumeFrustum,
+            frustumVisible: s.lidarVolumeFrustum ? s.lidarVolumeFrustum.visible : false,
+            hasBeams: !!s.lidarLaserBeams,
+            beamsVisible: s.lidarLaserBeams ? s.lidarLaserBeams.visible : false,
             hasPointCloud: !!s.lidarPointCloud,
             pointCloudVisible: s.lidarPointCloud ? s.lidarPointCloud.visible : false,
             maxPoints: s.maxPoints,
             pointHistoryLen: s.pointHistory.length,
-            hasBlindZone: !!s.lidarBlindZone,
-            blindZoneVisible: s.lidarBlindZone ? s.lidarBlindZone.visible : false,
             hasRangeRings: !!s.lidarRangeRings,
-            effectiveRange: s.effectiveLidarRange,
-            nominalRange: s.lidarNominalRange,
-            quality: s.lidarScanQuality,
-            noise: s.lidarNoiseLevel,
-            visMode: s.lidarVisMode,
-            mappedArea: s.mappedAreaSqM
+            rangeRingsVisible: s.lidarRangeRings ? s.lidarRangeRings.visible : false,
+            bgHex: window.droneApp.scene.background ? window.droneApp.scene.background.getHexString() : null,
+            cyanWireframeCount: cyanCount
         };
     })()""")
     print(f"  Sensor Mode: {lidar_state['mode']}")
-    print(f"  LiDAR SLAM HUD Panel visible: {lidar_state['panelVisible']}")
-    print(f"  Scan Rays (LineSegments) visible: {lidar_state['scanRaysVisible']}")
-    print(f"  Impact Points visible: {lidar_state['impactPointsVisible']}")
+    print(f"  Authentic LiDAR HUD Overlay visible: {lidar_state['hudVisible']}")
+    print(f"  Legacy SLAM Panel hidden: {lidar_state['legacyPanelHidden']}")
+    print(f"  Inverted Frustum visible: {lidar_state['frustumVisible']}")
+    print(f"  16-Beam Laser Array visible: {lidar_state['beamsVisible']}")
     print(f"  Point Cloud buffer capacity: {lidar_state['maxPoints']}, Current points: {lidar_state['pointHistoryLen']}")
-    print(f"  Purple Blind Zone visible: {lidar_state['blindZoneVisible']}")
-    print(f"  Effective Range: {lidar_state['effectiveRange']}m, Scan Quality: {lidar_state['quality']}%, Noise: {lidar_state['noise']}")
-    print(f"  Mapped Area: {lidar_state['mappedArea']} m²")
+    print(f"  Tactical Void Background: #{lidar_state['bgHex']}")
+    print(f"  Cyan Wireframe Obstacles: {lidar_state['cyanWireframeCount']}")
 
     assert lidar_state['mode'] == 'LIDAR', "Sensor mode must be LIDAR!"
-    assert lidar_state['panelVisible'], "LiDAR SLAM HUD panel must be visible!"
-    assert lidar_state['scanRaysVisible'], "Active laser scan rays must be visible!"
-    assert lidar_state['impactPointsVisible'], "Laser impact hit points must be visible!"
+    assert lidar_state['hudVisible'], "Authentic LiDAR HUD overlay must be visible!"
+    assert lidar_state['legacyPanelHidden'], "Legacy SLAM panel must remain hidden!"
+    assert lidar_state['frustumVisible'], "Inverted scan cone frustum must be visible!"
+    assert lidar_state['beamsVisible'], "16-beam rotating laser array must be visible!"
     assert lidar_state['pointCloudVisible'], "Point cloud must be visible!"
-    assert lidar_state['hasBlindZone'], "Purple blind zone must be instantiated!"
-    assert lidar_state['blindZoneVisible'], "Purple blind zone must be visible!"
-    assert lidar_state['maxPoints'] >= 10000, "Point cloud buffer capacity must be >= 10,000!"
-    assert lidar_state['mappedArea'] is not None and lidar_state['mappedArea'] >= 0, "Mapped Area must be a valid non-negative number!"
+    assert lidar_state['rangeRingsVisible'], "Concentric range rings must be visible!"
+    assert lidar_state['maxPoints'] == 4800, "Point cloud buffer capacity must be exactly 4,800 (Himanshu specification)!"
+    assert lidar_state['bgHex'] == '010307', "LiDAR mode must set pitch-black tactical void (0x010307)!"
+    assert lidar_state['cyanWireframeCount'] > 0, "Obstacles must be transformed into luminous cyan wireframe matrix!"
 
-    # 7. Test LiDAR Visualization Modes
-    print("\n=== STEP 7: LiDAR Visualization Modes (Combined, Point Cloud, Scan Rays, Environment) ===")
-    for mode in ['POINT_CLOUD', 'SCAN_RAYS', 'ENVIRONMENT', 'COMBINED']:
-        eval_js(s, f"window.droneApp.sensors.setLidarVisMode('{mode}')")
-        time.sleep(0.3)
-        res = eval_js(s, """(() => {
-            const s = window.droneApp.sensors;
-            return {
-                mode: s.lidarVisMode,
-                pointCloudVis: s.lidarPointCloud.visible,
-                scanRaysVis: s.lidarScanRays.visible
-            };
-        })()""")
-        print(f"  Mode '{mode}' -> pointCloudVis: {res['pointCloudVis']}, scanRaysVis: {res['scanRaysVis']}")
-        if mode == 'POINT_CLOUD':
-            assert res['pointCloudVis'] and not res['scanRaysVis'], "Point Cloud mode should show points and hide rays!"
-        elif mode == 'SCAN_RAYS':
-            assert not res['pointCloudVis'] and res['scanRaysVis'], "Scan Rays mode should show rays and hide points!"
-        elif mode == 'ENVIRONMENT':
-            assert not res['pointCloudVis'] and not res['scanRaysVis'], "Environment mode should hide points and rays to reveal raw environment!"
-        elif mode == 'COMBINED':
-            assert res['pointCloudVis'] and res['scanRaysVis'], "Combined mode should show both!"
-
-    # Restore Combined mode
-    eval_js(s, "window.droneApp.sensors.setLidarVisMode('COMBINED')")
-
-    # 8. Test Weather Degradation on LiDAR
-    print("\n=== STEP 8: Weather Degradation on 3D LiDAR SLAM ===")
-    # Clear weather
-    eval_js(s, "window.droneApp.environment.setWeather('clear')")
-    time.sleep(0.5)
-    eval_js(s, "window.droneApp.sensors.updateLidarScan(0.05)")
-    clear_stats = eval_js(s, """(() => ({
-        range: window.droneApp.sensors.effectiveLidarRange,
-        quality: window.droneApp.sensors.lidarScanQuality,
-        noise: window.droneApp.sensors.lidarNoiseLevel
-    }))()""")
-    print(f"  CLEAR Weather  -> Range: {clear_stats['range']}m | Quality: {clear_stats['quality']}% | Noise: {clear_stats['noise']}")
-    assert clear_stats['range'] == 50.0, "Clear weather should provide maximum 50m range!"
-    assert clear_stats['quality'] >= 95, "Clear weather quality should be >= 95%!"
-
-    # Rain weather
-    eval_js(s, "window.droneApp.environment.setWeather('rain')")
-    time.sleep(0.5)
-    eval_js(s, "window.droneApp.sensors.updateLidarScan(0.05)")
-    rain_stats = eval_js(s, """(() => ({
-        range: window.droneApp.sensors.effectiveLidarRange,
-        quality: window.droneApp.sensors.lidarScanQuality,
-        noise: window.droneApp.sensors.lidarNoiseLevel
-    }))()""")
-    print(f"  RAIN Weather   -> Range: {rain_stats['range']}m | Quality: {rain_stats['quality']}% | Noise: {rain_stats['noise']}")
-    assert rain_stats['range'] < 46.0, "Rain should degrade LiDAR effective range below 46m!"
-    assert rain_stats['quality'] < clear_stats['quality'], "Rain should lower scan quality!"
-
-    # Dust weather
-    eval_js(s, "window.droneApp.environment.setWeather('dust')")
-    time.sleep(0.5)
-    eval_js(s, "window.droneApp.sensors.updateLidarScan(0.05)")
-    dust_stats = eval_js(s, """(() => ({
-        range: window.droneApp.sensors.effectiveLidarRange,
-        quality: window.droneApp.sensors.lidarScanQuality,
-        noise: window.droneApp.sensors.lidarNoiseLevel
-    }))()""")
-    print(f"  DUST STORM     -> Range: {dust_stats['range']}m | Quality: {dust_stats['quality']}% | Noise: {dust_stats['noise']}")
-    assert dust_stats['range'] <= 26.0, "Dust storm should heavily degrade range to <= 26m!"
-    assert dust_stats['noise'] == 'HIGH', "Dust storm should produce HIGH sensor noise!"
-
-    # Restore clear
-    eval_js(s, "window.droneApp.environment.setWeather('clear')")
-    time.sleep(0.5)
-
-    # 9. Test Legacy Cone Removal Verification
-    print("\n=== STEP 9: Legacy Cone Check ===")
-    cone_check = eval_js(s, """(() => {
-        const drone = window.droneApp.drone;
-        let foundCone = false;
-        drone.group.traverse(child => {
-            if (child.isMesh && child.geometry && child.geometry.type === 'ConeGeometry') {
-                foundCone = true;
-            }
-        });
-        return { foundGiantCone: foundCone };
+    # 7. Real-Time Geometric Raycasting & Dynamic Point Density
+    print("\n=== STEP 7: Real-Time Geometric Raycasting & Dynamic Point Density ===")
+    eval_js(s, """(() => {
+        window.droneApp.drone.group.position.set(0, 10, 0);
+        for (let i = 0; i < 20; i++) {
+            window.droneApp.sensors.updateLidarScan(0.05);
+        }
     })()""")
-    print(f"  Legacy giant cone found: {cone_check['foundGiantCone']}")
-    assert not cone_check['foundGiantCone'], "Legacy cone must NOT exist in drone group!"
+    time.sleep(0.5)
+
+    raycast_stats = eval_js(s, """(() => {
+        const s = window.droneApp.sensors;
+        const hudText = document.getElementById('lidar-hud-points-count');
+        return {
+            pointsCount: s.pointHistory.length,
+            hudText: hudText ? hudText.textContent : ''
+        };
+    })()""")
+    print(f"  Accumulated Points: {raycast_stats['pointsCount']} | HUD text: '{raycast_stats['hudText']}'")
+    assert raycast_stats['pointsCount'] > 0, "Raycasting must accumulate real geometric obstacle hits!"
+    assert f"{raycast_stats['pointsCount']} PTS" in raycast_stats['hudText'], "HUD points counter must match pointHistory length!"
+
+    # 8. Multi-Scenario and Weather Stability in LiDAR Mode
+    print("\n=== STEP 8: Multi-Scenario & Weather Stability in LiDAR Mode ===")
+    eval_js(s, "window.droneApp.setScenario('flash_flood')")
+    time.sleep(0.5)
+    eval_js(s, "window.droneApp.setWeather('rain')")
+    time.sleep(0.5)
+
+    flood_lidar_state = eval_js(s, """(() => {
+        const s = window.droneApp.sensors;
+        return {
+            mode: s.sensorMode,
+            bgHex: window.droneApp.scene.background ? window.droneApp.scene.background.getHexString() : null,
+            frustumVisible: s.lidarVolumeFrustum ? s.lidarVolumeFrustum.visible : false,
+            pointsVisible: s.lidarPointCloud ? s.lidarPointCloud.visible : false
+        };
+    })()""")
+    print(f"  Flash Flood + Rain in LiDAR -> Mode: {flood_lidar_state['mode']} | Void: #{flood_lidar_state['bgHex']}")
+    assert flood_lidar_state['mode'] == 'LIDAR', "Must remain in LIDAR mode!"
+    assert flood_lidar_state['bgHex'] == '010307', "Tactical void must persist across scenario & weather transitions!"
+    assert flood_lidar_state['frustumVisible'], "LiDAR frustum must remain visible!"
+
+    # Restore earthquake & clear weather
+    eval_js(s, "window.droneApp.setScenario('earthquake')")
+    eval_js(s, "window.droneApp.setWeather('clear')")
+    time.sleep(0.5)
+
+    # 9. Mode Switching Integrity (LIDAR -> RGB -> LIDAR)
+    print("\n=== STEP 9: Sensor Mode Switching Integrity ===")
+    eval_js(s, "window.droneApp.sensors.setSensorMode('RGB')")
+    time.sleep(0.3)
+    rgb_state = eval_js(s, """(() => {
+        const s = window.droneApp.sensors;
+        return {
+            mode: s.sensorMode,
+            frustumVisible: s.lidarVolumeFrustum ? s.lidarVolumeFrustum.visible : false,
+            pointsVisible: s.lidarPointCloud ? s.lidarPointCloud.visible : false,
+            isLidarVision: window.droneApp.environment.isLidarVision
+        };
+    })()""")
+    print(f"  RGB Mode -> Frustum: {rgb_state['frustumVisible']}, Points: {rgb_state['pointsVisible']}, Vision: {rgb_state['isLidarVision']}")
+    assert not rgb_state['frustumVisible'], "Frustum must hide in RGB mode!"
+    assert not rgb_state['pointsVisible'], "Point cloud must hide in RGB mode!"
+    assert not rgb_state['isLidarVision'], "Tactical vision must disable in RGB mode!"
+
+    # Re-engage LiDAR
+    eval_js(s, "window.droneApp.sensors.setSensorMode('LIDAR')")
+    time.sleep(0.3)
 
     # 10. Capture Verification Screenshot
     print("\n=== STEP 10: Capture Verification Screenshot ===")
