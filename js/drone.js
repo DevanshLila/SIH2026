@@ -11,6 +11,7 @@ class DroneModel {
     this.propellers = [];
     this.strobeLights = [];
     this.spotlight = null;
+    this.floodlight = null;
     this.lidarBeam = null;
     
     // Physics and state
@@ -20,6 +21,13 @@ class DroneModel {
     this.rotation = new THREE.Euler(0, 0, 0, 'YXZ');
     this.targetRotation = new THREE.Euler(0, 0, 0, 'YXZ');
     this.groundElevation = 0.75;
+
+    // Aerodynamic wind turbulence & gust response
+    this.windTurbulence = {
+      active: false,
+      intensity: 0,
+      time: 0
+    };
     
     // Initial launch / Home base station coordinates & orientation
     this.homePosition = new THREE.Vector3(0, 0.75, 0);
@@ -244,6 +252,12 @@ class DroneModel {
     this.group.add(this.spotlight);
     this.group.add(this.spotlight.target);
 
+    // Downward Flood illuminator attached to drone chassis
+    this.floodlight = new THREE.PointLight(0xe0f2fe, 3.5, 45, 1.2);
+    this.floodlight.position.set(0, -0.6, 0);
+    this.floodlight.visible = false;
+    this.group.add(this.floodlight);
+
     // 6. Drone Sensor Mount Rig (decorative scanning cone completely removed)
     this.scannerVolume = new THREE.Group();
     this.scannerVolume.visible = false;
@@ -462,7 +476,15 @@ class DroneModel {
     } else {
       this.spotlight.visible = on;
     }
+    if (this.floodlight) {
+      this.floodlight.visible = this.spotlight.visible;
+    }
     return this.spotlight.visible;
+  }
+
+  setWindTurbulence(active, intensity = 0.5) {
+    this.windTurbulence.active = active;
+    this.windTurbulence.intensity = intensity;
   }
 }
 

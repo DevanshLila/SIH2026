@@ -32,6 +32,8 @@ class DisasterEnvironment {
     this.floatingObjects = []; // Objects bobbing on water
     this.currentScenario = 'earthquake';
     this.isNightMode = false;
+    this.isLidarVision = false;
+    this.originalMaterials = new Map();
     this.homeStationGroup = null;
     this.homeStationPulseRing = null;
     this.homeStationPulseTimer = 0;
@@ -105,6 +107,7 @@ class DisasterEnvironment {
     this.homeStationPulseRing = null;
     this.swayingVegetation = [];
     this.waterPuddles = [];
+    this.originalMaterials.clear();
 
     if (this.surfaceWetnessGroup) {
       while (this.surfaceWetnessGroup.children.length > 0) {
@@ -6813,6 +6816,78 @@ class DisasterEnvironment {
     }
 
     return maxPpm;
+  }
+
+  setLidarVisionMode(enable) {
+    this.isLidarVision = enable;
+
+    // 1. Dark Tactical SLAM Void Background & Atmospheric Fog
+    if (this.scene) {
+      if (enable) {
+        if (!this.savedSceneBackground) {
+          this.savedSceneBackground = this.scene.background ? this.scene.background.clone() : new THREE.Color(0x040814);
+          this.savedSceneFog = this.scene.fog ? { color: this.scene.fog.color.clone(), density: this.scene.fog.density } : null;
+        }
+        this.scene.background = new THREE.Color(0x010307); // Pitch black tactical void
+        this.scene.fog = new THREE.FogExp2(0x010307, 0.016);
+      } else if (this.savedSceneBackground) {
+        this.scene.background = this.savedSceneBackground.clone();
+        if (this.savedSceneFog) {
+          this.scene.fog = new THREE.FogExp2(this.savedSceneFog.color.getHex(), this.savedSceneFog.density);
+        }
+      }
+    }
+
+    // 2. High-Definition Fluorescent Wireframe Matrix for Obstacles & Victims
+    this.environmentGroup.traverse(child => {
+      if (child.isMesh && child !== this.waterMesh) {
+        if (enable) {
+          if (!this.originalMaterials.has(child)) {
+            this.originalMaterials.set(child, child.material);
+          }
+          
+          const isSurvivor = (child.name && child.name.includes('survivor')) || child.userData?.isSurvivor;
+          const isHazard = (child.name && child.name.includes('hazard')) || child.userData?.isHazard;
+
+          if (isSurvivor) {
+            // High-visibility glowing fluorescent green victim core
+            child.material = new THREE.MeshBasicMaterial({
+              color: 0x00ff66,
+              wireframe: false,
+              transparent: true,
+              opacity: 0.95
+            });
+          } else if (isHazard) {
+            // Warning Red for hazardous materials
+            child.material = new THREE.MeshBasicMaterial({
+              color: 0xef4444,
+              wireframe: true,
+              transparent: true,
+              opacity: 0.75,
+              depthWrite: false
+            });
+          } else {
+            // Structural geometry & collapsed rubble in luminous Cyan SLAM Matrix
+            child.material = new THREE.MeshBasicMaterial({
+              color: 0x06b6d4,
+              wireframe: true,
+              transparent: true,
+              opacity: 0.55,
+              depthWrite: false
+            });
+          }
+        } else {
+          // Restore original realistic PBR material
+          if (this.originalMaterials.has(child)) {
+            child.material = this.originalMaterials.get(child);
+          }
+        }
+      }
+    });
+
+    if (!enable) {
+      this.originalMaterials.clear();
+    }
   }
 }
 

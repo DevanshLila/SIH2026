@@ -80,6 +80,25 @@ class TacticalGcsDashboard {
     } catch (e) {}
   }
 
+  playProximityBeep() {
+    if (!this.audioContext || this.isMuted) return;
+    if (this._lastProxBeep && Date.now() - this._lastProxBeep < 900) return;
+    this._lastProxBeep = Date.now();
+    try {
+      this.audioContext.resume();
+      const osc = this.audioContext.createOscillator();
+      const gain = this.audioContext.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1100, this.audioContext.currentTime);
+      gain.gain.setValueAtTime(0.07, this.audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start();
+      osc.stop(this.audioContext.currentTime + 0.12);
+    } catch (e) {}
+  }
+
   toggleSound() {
     this.isMuted = !this.isMuted;
     const btn = document.getElementById('btn-sound-toggle');
@@ -199,6 +218,50 @@ class TacticalGcsDashboard {
     if (elSurvivorsCount) {
       const detected = this.environment.survivors.filter(s => s.detected).length;
       elSurvivorsCount.textContent = `${detected} / ${this.environment.survivors.length}`;
+    }
+
+    // Atmospheric & Weather Radar card (Avionics)
+    const elWeatherCond = document.getElementById('val-weather-condition');
+    if (elWeatherCond) {
+      const app = window.droneApp;
+      const cond = (app && app.currentWeather) ? app.currentWeather.toUpperCase() : (this.environment.weatherCondition ? this.environment.weatherCondition.toUpperCase() : 'CLEAR SKY');
+      elWeatherCond.textContent = cond;
+    }
+
+    const elWindSpeed = document.getElementById('val-wind-speed');
+    if (elWindSpeed) {
+      const liveSpeed = (this.environment && this.environment.currentLiveWindSpeed)
+        ? (this.environment.currentLiveWindSpeed * 3.6).toFixed(1)
+        : (t.windSpeed !== undefined ? t.windSpeed.toFixed(1) : '12.4');
+      elWindSpeed.textContent = `${liveSpeed} km/h`;
+    }
+
+    const elWindDir = document.getElementById('val-wind-dir');
+    if (elWindDir) {
+      if (this.environment && typeof this.environment.windAngle === 'number') {
+        const deg = Math.round((this.environment.windAngle * 180 / Math.PI + 360) % 360);
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const dName = dirs[Math.floor(((deg + 22.5) % 360) / 45)];
+        elWindDir.textContent = `${dName} ${deg}°`;
+      } else {
+        elWindDir.textContent = t.windDirection || 'ESE 112°';
+      }
+    }
+
+    const elVisPct = document.getElementById('val-visibility-pct');
+    if (elVisPct) {
+      const app = window.droneApp;
+      let vis = '98.5%';
+      if (app && app.currentWeather === 'rain') vis = '72.0%';
+      else if (app && app.currentWeather === 'dust') vis = '48.0%';
+      else if (app && app.currentWeather === 'windy') vis = '88.0%';
+      elVisPct.textContent = vis;
+    }
+
+    const elImuComp = document.getElementById('val-imu-comp');
+    if (elImuComp) {
+      const compDeg = (t.pitch * 0.15).toFixed(2);
+      elImuComp.textContent = `ACTIVE (${compDeg > 0 ? '+' : ''}${compDeg}°)`;
     }
   }
 

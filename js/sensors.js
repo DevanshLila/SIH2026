@@ -135,6 +135,12 @@ class SensorFusionEngine {
     this.lidarBlindZoneLabel = null;
     this.lidarVolumeFrustum = null; // backward-compatible alias
 
+    // Inverted Scanning Cone & 16-Beam Rotating Laser Array (Himanshu SLAM)
+    this.lidarConeWireframe = null;
+    this.lidarLaserBeams = null;
+    this.lidarBeamsMesh = null;
+    this.lidarScanAngle = 0;
+
     // Ground Concentric Range Rings & 50m Range Boundary (Requirements 1 & 2)
     this.lidarRangeRings = null;
     this.lidarSweepLine = null;
@@ -542,8 +548,54 @@ class SensorFusionEngine {
     this.lidarBlindZone.visible = false;
     this.drone.group.add(this.lidarBlindZone);
 
-    // Backward-compatible reference
-    this.lidarVolumeFrustum = this.lidarBlindZone;
+    // Realistic INVERTED CONE Detection Zone (Apex at drone sensor, expanding downward to ground)
+    const coneRadius = 25.0 * 0.72; // ~18m wide footprint on ground
+    const coneHeight = 25.0; // 25m scanning depth
+    const frustumGeo = new THREE.CylinderGeometry(0.04, coneRadius, coneHeight, 36, 6, true);
+    frustumGeo.translate(0, -coneHeight / 2 - 0.22, 0);
+
+    const frustumMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      wireframe: false,
+      transparent: true,
+      opacity: 0.08,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    this.lidarVolumeFrustum = new THREE.Mesh(frustumGeo, frustumMat);
+    this.lidarVolumeFrustum.visible = false;
+    this.drone.group.add(this.lidarVolumeFrustum);
+
+    // Holographic Wireframe Scan Rings on the Inverted Cone
+    this.lidarConeWireframe = new THREE.LineSegments(
+      new THREE.WireframeGeometry(frustumGeo),
+      new THREE.LineBasicMaterial({
+        color: 0x00f0ff,
+        transparent: true,
+        opacity: 0.18,
+        depthWrite: false
+      })
+    );
+    this.lidarConeWireframe.visible = false;
+    this.drone.group.add(this.lidarConeWireframe);
+
+    // 16-Beam Rotating Laser Array inside the Inverted Cone
+    this.lidarLaserBeams = new THREE.Group();
+    const beamCount = 16;
+    const beamGeo = new THREE.BufferGeometry();
+    const beamPositions = new Float32Array(beamCount * 2 * 3);
+    beamGeo.setAttribute('position', new THREE.BufferAttribute(beamPositions, 3));
+
+    const beamMat = new THREE.LineBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending
+    });
+    this.lidarBeamsMesh = new THREE.LineSegments(beamGeo, beamMat);
+    this.lidarLaserBeams.add(this.lidarBeamsMesh);
+    this.lidarLaserBeams.visible = false;
+    this.drone.group.add(this.lidarLaserBeams);
 
     // 5. Ground Concentric Range Rings & 50m Max Range Boundary (Requirements 1 & 2)
     this.lidarRangeRings = new THREE.Group();
@@ -940,6 +992,15 @@ class SensorFusionEngine {
     if (this.lidarRangeRings) {
       this.lidarRangeRings.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
     }
+    if (this.lidarVolumeFrustum) {
+      this.lidarVolumeFrustum.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
+    }
+    if (this.lidarConeWireframe) {
+      this.lidarConeWireframe.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
+    }
+    if (this.lidarLaserBeams) {
+      this.lidarLaserBeams.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
+    }
     if (this.lidarTrajectoryLine) {
       this.lidarTrajectoryLine.visible = isLidarMode && (this.lidarVisMode !== 'ENVIRONMENT');
     }
@@ -950,6 +1011,27 @@ class SensorFusionEngine {
     const lidarPanel = document.getElementById('lidar-slam-panel');
     if (lidarPanel) {
       lidarPanel.style.display = isLidarMode ? 'block' : 'none';
+    }
+
+    // Animate 16 Rotating Laser Beams in the Inverted Cone (Himanshu SLAM)
+    this.lidarScanAngle = (this.lidarScanAngle || 0) + 5.5 * delta;
+    if (this.lidarBeamsMesh && isLidarMode) {
+      const beamPos = this.lidarBeamsMesh.geometry.attributes.position.array;
+      const count = 16;
+      const baseRadius = 25.0 * 0.72;
+      const depth = -25.0;
+
+      for (let b = 0; b < count; b++) {
+        const theta = this.lidarScanAngle + (b / count) * Math.PI * 2;
+        const bIdx = b * 6;
+        beamPos[bIdx] = 0;
+        beamPos[bIdx + 1] = -0.22;
+        beamPos[bIdx + 2] = 0;
+        beamPos[bIdx + 3] = Math.cos(theta) * baseRadius;
+        beamPos[bIdx + 4] = depth;
+        beamPos[bIdx + 5] = Math.sin(theta) * baseRadius;
+      }
+      this.lidarBeamsMesh.geometry.attributes.position.needsUpdate = true;
     }
 
     // Animate active detection pulse beams
@@ -1316,16 +1398,28 @@ class SensorFusionEngine {
           r = 0.75; g = 0.65; b = 0.35;
         } else if (pt.isSurvivor) {
           r = 0.98; g = 0.68; b = 0.12; // Warm amber survivor body signature
-        } else if (pt.dist < 1.6) {
-          r = 1.0; g = 0.20; b = 0.20; // Urgent collision proximity threshold
-        } else if (ageSec < 1.5) {
-          r = 0.70; g = 1.0; b = 1.0; // Fresh return: bright cyan-white
-        } else if (ageSec < 6.0) {
-          r = 0.0; g = 0.92; b = 1.0; // Active return: vibrant cyan
-        } else if (ageSec < 20.0) {
-          r = 0.03; g = 0.65; b = 0.82; // Partially reconstructed: cyan-blue
+        } else if (pt.dist < 3.5) {
+          r = 1.0; g = 0.10; b = 0.25; // Proximity warning override if obstacle is critically close (< 3.5m)
         } else {
-          r = 0.02; g = 0.38; b = 0.52; // High-confidence persistent SLAM map
+          // Authentic LiDAR Rainbow Elevation Color Mapping (Velodyne / Ouster / RViz standard)
+          const elev = Math.max(0, pt.pos.y);
+          if (elev < 1.0) {
+            // Deep Blue to Aqua (Ground / Basements)
+            const f = elev / 1.0;
+            r = 0.1; g = 0.3 + f * 0.5; b = 1.0;
+          } else if (elev < 3.2) {
+            // Cyan to Mint Green (Low rubble, vehicles, debris)
+            const f = (elev - 1.0) / 2.2;
+            r = 0.0; g = 0.8 + f * 0.2; b = 1.0 - f * 0.6;
+          } else if (elev < 7.0) {
+            // Green to Bright Yellow (Walls, slabs, roofs)
+            const f = (elev - 3.2) / 3.8;
+            r = f; g = 1.0; b = 0.1;
+          } else {
+            // Yellow to Crimson Red (Elevated collapsed structures, poles, towers)
+            const f = Math.min(1.0, (elev - 7.0) / 4.0);
+            r = 1.0; g = 1.0 - f * 0.85; b = 0.1;
+          }
         }
 
         colors[i * 3]     = r;
@@ -1338,6 +1432,10 @@ class SensorFusionEngine {
 
     this.lidarPointCloud.geometry.attributes.position.needsUpdate = true;
     this.lidarPointCloud.geometry.attributes.color.needsUpdate = true;
+
+    // Update LiDAR HUD stats text if visible
+    const elPts = document.getElementById('lidar-hud-points-count');
+    if (elPts) elPts.textContent = `${this.pointHistory.length} PTS`;
 
     // 6. Progressive SLAM Material Settling
     // Fresh cyan surfaces smoothly transition to cyan-blue and then dark grey/black
@@ -1816,6 +1914,8 @@ class SensorFusionEngine {
     const thermalLegend = document.getElementById('thermal-legend');
     const lidarPanel = document.getElementById('lidar-slam-panel');
 
+    const lidarOverlay = document.getElementById('lidar-hud-overlay');
+
     // Synchronize UI sensor mode button highlights
     const modeButtons = document.querySelectorAll('.mode-btn');
     if (modeButtons && modeButtons.length > 0) {
@@ -1830,13 +1930,12 @@ class SensorFusionEngine {
 
     // Reset post-processing effects
     if (container) {
-      container.classList.remove('thermal-filter');
-      container.classList.remove('thermal-mode');
-      container.classList.remove('nvg-mode');
+      container.classList.remove('thermal-filter', 'thermal-mode', 'nvg-filter', 'nvg-mode', 'lidar-filter');
     }
     if (thermalScan) thermalScan.style.display = 'none';
     if (nvgOverlay) nvgOverlay.style.display = 'none';
     if (thermalLegend) thermalLegend.style.display = 'none';
+    if (lidarOverlay) lidarOverlay.style.display = 'none';
     const nvgBadge = document.getElementById('nvg-hud-badge');
     if (nvgBadge) nvgBadge.style.display = 'none';
 
@@ -1846,6 +1945,10 @@ class SensorFusionEngine {
       this.drone.scannerVolume.visible = false;
     }
     if (lidarPanel) lidarPanel.style.display = isLidar ? 'block' : 'none';
+    if (lidarOverlay) lidarOverlay.style.display = isLidar ? 'block' : 'none';
+    if (this.lidarVolumeFrustum) this.lidarVolumeFrustum.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
+    if (this.lidarConeWireframe) this.lidarConeWireframe.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
+    if (this.lidarLaserBeams) this.lidarLaserBeams.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
     if (this.lidarPointCloud) this.lidarPointCloud.visible = isLidar && (this.lidarVisMode === 'COMBINED' || this.lidarVisMode === 'POINT_CLOUD');
     if (this.lidarScanRays) this.lidarScanRays.visible = isLidar && (this.lidarVisMode === 'COMBINED' || this.lidarVisMode === 'SCAN_RAYS');
     if (this.lidarImpactPoints) this.lidarImpactPoints.visible = isLidar && (this.lidarVisMode === 'COMBINED' || this.lidarVisMode === 'SCAN_RAYS');
@@ -1854,7 +1957,11 @@ class SensorFusionEngine {
     if (this.lidarTrajectoryLine) this.lidarTrajectoryLine.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
     if (this.movementVectorGroup) this.movementVectorGroup.visible = isLidar && (this.lidarVisMode !== 'ENVIRONMENT');
 
+    if (this.environment && typeof this.environment.setLidarVisionMode === 'function') {
+      this.environment.setLidarVisionMode(isLidar);
+    }
     if (isLidar) {
+      if (container) container.classList.add('lidar-filter');
       this.setLidarEnvironmentActive(true);
     } else if (prevMode === 'LIDAR') {
       this.setLidarEnvironmentActive(false);

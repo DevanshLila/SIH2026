@@ -17,8 +17,18 @@ class TacticalGisMap {
     this.mapCenter = { x: 0, z: 0 };
     this.scale = 3.2; // pixels per meter
 
+    // Interactive Drag State for Manual Area Allotment
+    this.isDragging = false;
+    this.dragStartScreen = null;
+    this.dragCurrentScreen = null;
+    this.dragStartWorld = null;
+    this.dragCurrentWorld = null;
+    this.dragRadiusMeters = 0;
+
     this.initCanvasSize();
     window.addEventListener('resize', () => this.initCanvasSize());
+
+    this.initInteractiveHandlers();
   }
 
   initCanvasSize() {
@@ -26,6 +36,169 @@ class TacticalGisMap {
     const rect = this.canvas.parentElement.getBoundingClientRect();
     this.canvas.width = rect.width || 380;
     this.canvas.height = rect.height || 280;
+  }
+
+  initInteractiveHandlers() {
+    if (!this.canvas) return;
+
+    this.canvas.style.cursor = 'crosshair';
+    this.canvas.title = 'Click & drag anywhere on map to allot custom circular search zone to UAV';
+
+    const getPos = (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      return {
+        sx: e.clientX - rect.left,
+        sy: e.clientY - rect.top
+      };
+    };
+
+    // Mouse Down: Start center of search circle
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return; // Left click only
+      const { sx, sy } = getPos(e);
+      this.isDragging = true;
+      this.dragStartScreen = { x: sx, y: sy };
+      this.dragCurrentScreen = { x: sx, y: sy };
+      this.dragStartWorld = this.screenToWorld(sx, sy);
+      this.dragCurrentWorld = this.screenToWorld(sx, sy);
+      this.dragRadiusMeters = 0;
+    });
+
+    // Window Mouse Move: Compute live radius in meters
+    window.addEventListener('mousemove', (e) => {
+      if (!this.isDragging || !this.dragStartWorld) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+
+      this.dragCurrentScreen = { x: sx, y: sy };
+      this.dragCurrentWorld = this.screenToWorld(sx, sy);
+
+      const dx = this.dragCurrentWorld.x - this.dragStartWorld.x;
+      const dz = this.dragCurrentWorld.z - this.dragStartWorld.z;
+      const distMeters = Math.hypot(dx, dz);
+
+      // Clamp radius between 12m and 60m for safe UAV search bounds
+      this.dragRadiusMeters = Math.max(12, Math.min(60, distMeters));
+    });
+
+    // Window Mouse Up: Commit custom allotted circular GPS search sector
+    window.addEventListener('mouseup', (e) => {
+      if (!this.isDragging || !this.dragStartWorld) return;
+      this.isDragging = false;
+
+      const centerWorld = this.dragStartWorld;
+      let radius = this.dragRadiusMeters;
+
+      // Handle simple click without dragging (short distance < 6px)
+      const screenDist = Math.hypot(
+        this.dragCurrentScreen.x - this.dragStartScreen.x,
+        this.dragCurrentScreen.y - this.dragStartScreen.y
+      );
+      if (screenDist < 6 || radius < 10) {
+        radius = 32.0; // Default standard 32m radius circle
+      }
+
+      const centerGps = this.navigator.meterOffsetToGps(centerWorld.x, centerWorld.z);
+
+      // Feed custom allotted circular GPS search sector to autonomous navigator
+      this.navigator.feedCircularGpsTargetArea({
+        centerLat: centerGps.lat,
+        centerLng: centerGps.lng,
+        radiusMeters: radius,
+        altitude: 14.0,
+        sectorName: `MANUAL ALLOTTED (${radius.toFixed(0)}m R &bull; ${centerGps.lat.toFixed(4)}°N)`
+      });
+
+      this.dragStartScreen = null;
+      this.dragCurrentScreen = null;
+      this.dragStartWorld = null;
+      this.dragCurrentWorld = null;
+    });
+
+    // Touch Support for Tablets / Mobile Tactical Stations
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const sx = touch.clientX - rect.left;
+      const sy = touch.clientY - rect.top;
+      this.isDragging = true;
+      this.dragStartScreen = { x: sx, y: sy };
+      this.dragCurrentScreen = { x: sx, y: sy };
+      this.dragStartWorld = this.screenToWorld(sx, sy);
+      this.dragCurrentWorld = this.screenToWorld(sx, sy);
+      this.dragRadiusMeters = 0;
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!this.isDragging || e.touches.length !== 1 || !this.dragStartWorld) return;
+      const touch = e.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const sx = touch.clientX - rect.left;
+      const sy = touch.clientY - rect.top;
+      this.dragCurrentScreen = { x: sx, y: sy };
+      this.dragCurrentWorld = this.screenToWorld(sx, sy);
+
+      const dx = this.dragCurrentWorld.x - this.dragStartWorld.x;
+      const dz = this.dragCurrentWorld.z - this.dragStartWorld.z;
+      this.dragRadiusMeters = Math.max(12, Math.min(60, Math.hypot(dx, dz)));
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => {
+      if (!this.isDragging || !this.dragStartWorld) return;
+      this.isDragging = false;
+      let radius = this.dragRadiusMeters < 10 ? 32.0 : this.dragRadiusMeters;
+      const centerGps = this.navigator.meterOffsetToGps(this.dragStartWorld.x, this.dragStartWorld.z);
+
+      this.navigator.feedCircularGpsTargetArea({
+        centerLat: centerGps.lat,
+        centerLng: centerGps.lng,
+        radiusMeters: radius,
+        altitude: 14.0,
+        sectorName: `MANUAL ALLOTTED (${radius.toFixed(0)}m R)`
+      });
+
+      this.dragStartScreen = null;
+      this.dragCurrentScreen = null;
+      this.dragStartWorld = null;
+    });
+
+    // Reset Allotted GPS Sector Button
+    const btnReset = document.getElementById('btn-clear-gps-sector');
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        this.navigator.circularSector = null;
+        this.navigator.fedGpsSector = null;
+        this.navigator.isCircularSearch = false;
+        // Clear 3D holographic geofence
+        while (this.navigator.geofenceGroup && this.navigator.geofenceGroup.children.length > 0) {
+          const child = this.navigator.geofenceGroup.children[0];
+          this.navigator.geofenceGroup.remove(child);
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) child.material.dispose();
+        }
+        this.navigator.generateSpiralPath();
+        this.navigator.navMode = 'SPIRAL';
+        this.drone.telemetry.flightMode = 'AUTO: SPIRAL RECON';
+
+        const toast = document.getElementById('tour-toast');
+        const toastText = document.getElementById('tour-toast-text');
+        if (toast && toastText) {
+          toastText.innerHTML = `↺ <strong>GPS SECTOR RESET:</strong> Reverted to baseline mission grid.`;
+          toast.style.display = 'flex';
+          setTimeout(() => { if (toast) toast.style.display = 'none'; }, 3000);
+        }
+      });
+    }
+  }
+
+  screenToWorld(sx, sy) {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const wx = (sx - cx) / this.scale + this.mapCenter.x;
+    const wz = (sy - cy) / this.scale + this.mapCenter.z;
+    return { x: wx, z: wz };
   }
 
   worldToScreen(wx, wz) {
@@ -115,6 +288,110 @@ class TacticalGisMap {
 
     // Draw Safe Ground Extraction Route for NDRF Rescue Squads
     this.drawSafeExtractionRoute();
+
+    // 1. Draw Active ALLOTTED CIRCULAR GPS SEARCH AREA (Archimedean Spiral)
+    if (this.navigator && this.navigator.circularSector && this.navigator.circularSector.isFed) {
+      const sec = this.navigator.circularSector;
+      const cScreen = this.worldToScreen(sec.centerX, sec.centerZ);
+      const rPx = sec.radiusMeters * this.scale;
+
+      // Radial glowing fill
+      const grad = ctx.createRadialGradient(cScreen.x, cScreen.y, 0, cScreen.x, cScreen.y, rPx);
+      grad.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
+      grad.addColorStop(0.75, 'rgba(56, 189, 248, 0.10)');
+      grad.addColorStop(1, 'rgba(56, 189, 248, 0.02)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cScreen.x, cScreen.y, rPx, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Glowing dashed perimeter ring
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([6, 3]);
+      ctx.beginPath();
+      ctx.arc(cScreen.x, cScreen.y, rPx, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Outer boundary aura
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
+      ctx.lineWidth = 4.0;
+      ctx.beginPath();
+      ctx.arc(cScreen.x, cScreen.y, rPx, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Epicenter crosshair
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(cScreen.x - 8, cScreen.y);
+      ctx.lineTo(cScreen.x + 8, cScreen.y);
+      ctx.moveTo(cScreen.x, cScreen.y - 8);
+      ctx.lineTo(cScreen.x, cScreen.y + 8);
+      ctx.stroke();
+
+      // Sector tactical badge
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 8.5px "JetBrains Mono"';
+      ctx.fillText(`◎ ALLOTTED GPS SECTOR (${sec.radiusMeters.toFixed(0)}m RADIUS)`, cScreen.x - 45, cScreen.y - rPx - 6);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '7.5px "JetBrains Mono"';
+      ctx.fillText(`${sec.centerLat.toFixed(4)}°N, ${sec.centerLng.toFixed(4)}°E`, cScreen.x - 45, cScreen.y - rPx + 4);
+    }
+
+    // 2. Draw Active FED RECTANGULAR GPS SECTOR
+    if (this.navigator && this.navigator.fedGpsSector && this.navigator.fedGpsSector.isFed) {
+      const sec = this.navigator.fedGpsSector;
+      const pMin = this.worldToScreen(sec.minX, sec.minZ);
+      const pMax = this.worldToScreen(sec.maxX, sec.maxZ);
+      const sw = pMax.x - pMin.x;
+      const sh = pMax.y - pMin.y;
+
+      ctx.fillStyle = 'rgba(14, 165, 233, 0.10)';
+      ctx.fillRect(pMin.x, pMin.y, sw, sh);
+
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([5, 3]);
+      ctx.strokeRect(pMin.x, pMin.y, sw, sh);
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 8px "JetBrains Mono"';
+      ctx.fillText(`⛯ FED GPS SECTOR [${sec.sectorName}]`, pMin.x + 4, pMin.y - 5);
+    }
+
+    // 3. Draw DRAG-IN-PROGRESS PREVIEW CIRCLE when user is dragging on map
+    if (this.isDragging && this.dragStartWorld && this.dragRadiusMeters > 0) {
+      const centerScreen = this.worldToScreen(this.dragStartWorld.x, this.dragStartWorld.z);
+      const rPx = this.dragRadiusMeters * this.scale;
+
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
+      ctx.beginPath();
+      ctx.arc(centerScreen.x, centerScreen.y, rPx, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([4, 2]);
+      ctx.beginPath();
+      ctx.arc(centerScreen.x, centerScreen.y, rPx, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Radius line indicator
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(centerScreen.x, centerScreen.y);
+      ctx.lineTo(centerScreen.x + rPx, centerScreen.y);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 9px "JetBrains Mono"';
+      ctx.fillText(`RADIUS: ${this.dragRadiusMeters.toFixed(1)}m`, centerScreen.x + 8, centerScreen.y - 6);
+    }
 
     // Draw Flight Breadcrumb Trail
     if (this.trail.length > 1) {
@@ -501,12 +778,12 @@ class TacticalGisMap {
   }
 
   drawLegend(ctx, w, h) {
-    ctx.fillStyle = 'rgba(7, 10, 18, 0.75)';
-    ctx.fillRect(8, h - 28, 170, 20);
+    ctx.fillStyle = 'rgba(7, 10, 18, 0.85)';
+    ctx.fillRect(8, h - 30, 210, 22);
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = '8px "JetBrains Mono"';
-    ctx.fillText('MAP: 160m² SECTOR | 1px = 0.31m', 12, h - 15);
+    ctx.fillText('MAP: 160m² SECTOR | DRAG TO ALLOT CIRCLE', 12, h - 16);
   }
 }
 

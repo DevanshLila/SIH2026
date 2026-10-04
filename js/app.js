@@ -311,6 +311,124 @@ class App {
       if (closeBtn) closeBtn.addEventListener('click', () => archModal.classList.remove('active'));
     }
 
+    // GPS Disaster Sector Modal & Mission Upload
+    const btnOpenGps = document.getElementById('btn-open-gps-modal');
+    const gpsModal = document.getElementById('gps-modal');
+    const btnCloseGps = document.getElementById('btn-close-gps-modal');
+    const btnCancelGps = document.getElementById('btn-cancel-gps-modal');
+    const btnSubmitGps = document.getElementById('btn-submit-gps-upload');
+
+    const openGps = () => gpsModal && gpsModal.classList.add('active');
+    const closeGps = () => gpsModal && gpsModal.classList.remove('active');
+
+    if (btnOpenGps) btnOpenGps.addEventListener('click', openGps);
+    if (btnCloseGps) btnCloseGps.addEventListener('click', closeGps);
+    if (btnCancelGps) btnCancelGps.addEventListener('click', closeGps);
+
+    // Preset Buttons in GPS Modal
+    const presetGpsBtns = document.querySelectorAll('.preset-gps-btn');
+    presetGpsBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lat = parseFloat(btn.dataset.lat);
+        const lng = parseFloat(btn.dataset.lng);
+        const w = parseFloat(btn.dataset.w);
+        const l = parseFloat(btn.dataset.l);
+        const alt = parseFloat(btn.dataset.alt);
+        const name = btn.dataset.name;
+
+        const inputLat = document.getElementById('input-gps-lat');
+        const inputLng = document.getElementById('input-gps-lng');
+        const inputW = document.getElementById('input-gps-w');
+        const inputL = document.getElementById('input-gps-l');
+        const inputAlt = document.getElementById('input-gps-alt');
+        if (inputLat) inputLat.value = lat.toFixed(6);
+        if (inputLng) inputLng.value = lng.toFixed(6);
+        if (inputW) inputW.value = w;
+        if (inputL) inputL.value = l;
+        if (inputAlt) inputAlt.value = alt;
+
+        // Auto upload to UAV
+        this.navigator.feedGpsTargetArea({
+          centerLat: lat,
+          centerLng: lng,
+          widthMeters: w,
+          lengthMeters: l,
+          altitude: alt,
+          sectorName: name
+        });
+        closeGps();
+      });
+    });
+
+    // Submit Custom GPS Coordinates
+    if (btnSubmitGps) {
+      btnSubmitGps.addEventListener('click', () => {
+        const inputLat = document.getElementById('input-gps-lat');
+        const inputLng = document.getElementById('input-gps-lng');
+        const inputW = document.getElementById('input-gps-w');
+        const inputL = document.getElementById('input-gps-l');
+        const inputAlt = document.getElementById('input-gps-alt');
+        const inputSpacing = document.getElementById('input-gps-spacing');
+
+        const lat = (inputLat && parseFloat(inputLat.value)) || 26.144500;
+        const lng = (inputLng && parseFloat(inputLng.value)) || 91.736200;
+        const w = (inputW && parseFloat(inputW.value)) || 50;
+        const l = (inputL && parseFloat(inputL.value)) || 50;
+        const alt = (inputAlt && parseFloat(inputAlt.value)) || 14;
+        const spacing = (inputSpacing && parseFloat(inputSpacing.value)) || 9;
+
+        this.navigator.feedGpsTargetArea({
+          centerLat: lat,
+          centerLng: lng,
+          widthMeters: w,
+          lengthMeters: l,
+          altitude: alt,
+          laneSpacing: spacing,
+          sectorName: `FED GPS SECTOR (${lat.toFixed(4)}°N)`
+        });
+        closeGps();
+      });
+    }
+
+    // File Upload Handler (KML, Waypoints, JSON)
+    const fileInput = document.getElementById('input-gps-file');
+    const fileNameDisplay = document.getElementById('gps-file-name');
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (fileNameDisplay) fileNameDisplay.textContent = `✓ ${file.name} loaded`;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            let lat = 26.145200;
+            let lng = 91.737100;
+            if (file.name.endsWith('.json')) {
+              const data = JSON.parse(event.target.result);
+              if (data.lat) lat = data.lat;
+              if (data.lng) lng = data.lng;
+            }
+            const inputLat = document.getElementById('input-gps-lat');
+            const inputLng = document.getElementById('input-gps-lng');
+            if (inputLat) inputLat.value = lat.toFixed(6);
+            if (inputLng) inputLng.value = lng.toFixed(6);
+            this.navigator.feedGpsTargetArea({
+              centerLat: lat,
+              centerLng: lng,
+              widthMeters: 55,
+              lengthMeters: 55,
+              sectorName: `FILE: ${file.name}`
+            });
+            setTimeout(closeGps, 600);
+          } catch (err) {
+            console.warn('File parse error', err);
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
+
     // SIH Presentation Tour Mode
     const btnTour = document.getElementById('btn-start-tour');
     if (btnTour) {
@@ -361,8 +479,10 @@ class App {
   }
 
   updateCamera() {
+    if (!this.drone || !this.drone.group) return;
     const dronePos = this.drone.group.position;
     const yaw = this.drone.group.rotation.y;
+    if (!Number.isFinite(dronePos.x) || !Number.isFinite(dronePos.y) || !Number.isFinite(dronePos.z)) return;
 
     if (this.cameraMode === 'FOLLOW') {
       // Elevated third-person smooth follow overlooking drone and disaster
