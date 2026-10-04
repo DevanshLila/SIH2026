@@ -379,6 +379,131 @@ body {
   z-index: 11;
 }
 
+/* 3D LiDAR SLAM Visual Filters & Tactical Holographic Grid */
+.lidar-filter {
+  filter: contrast(135%) brightness(1.1) saturate(155%);
+}
+
+.lidar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 240, 255, 0.04) 0%, rgba(2, 6, 23, 0.45) 90%),
+              repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.035), rgba(0, 240, 255, 0.035) 1px, transparent 1px, transparent 40px),
+              repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.035), rgba(0, 240, 255, 0.035) 1px, transparent 1px, transparent 40px);
+  mix-blend-mode: screen;
+  display: none;
+  z-index: 11;
+}
+
+/* 3D LiDAR SLAM Tactical HUD Widget */
+.lidar-slam-hud {
+  position: absolute;
+  top: 64px;
+  right: 20px;
+  z-index: 15;
+  pointer-events: auto;
+}
+
+.lidar-hud-panel {
+  background: rgba(10, 16, 28, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.18), inset 0 0 12px rgba(0, 240, 255, 0.05);
+  border-radius: 8px;
+  padding: 10px 12px;
+  width: 175px;
+  backdrop-filter: blur(8px);
+}
+
+.lidar-hud-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.lidar-hud-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #00f0ff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+}
+
+.lidar-scope-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 8px;
+  background: #030712;
+  border-radius: 6px;
+  padding: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+#lidar-polar-scope {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  display: block;
+}
+
+.lidar-metrics-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.68rem;
+  margin-bottom: 8px;
+}
+
+.lidar-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lidar-metric-row .lbl {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.lidar-metric-row .val {
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.lidar-elevation-legend {
+  border-top: 1px solid rgba(56, 189, 248, 0.2);
+  padding-top: 6px;
+  font-size: 0.62rem;
+}
+
+.lidar-elevation-legend .legend-lbl {
+  color: #94a3b8;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.lidar-elevation-legend .legend-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #00d2ff 0%, #10b981 50%, #f43f5e 100%);
+  margin-bottom: 3px;
+}
+
+.lidar-elevation-legend .legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font-size: 0.58rem;
+}
+
 /* Artificial Horizon Reticle */
 .hud-center {
   position: absolute;

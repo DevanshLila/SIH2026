@@ -76,9 +76,56 @@
           <!-- WebGL Canvas injected here by Three.js -->
         </div>
 
-        <!-- Thermal / NVG Shader Scanline Overlays -->
+        <!-- Thermal / NVG / LiDAR Shader Scanline & Holographic Overlays -->
         <div id="thermal-scanlines" class="thermal-scanline-overlay"></div>
         <div id="nvg-filter" class="nvg-overlay"></div>
+        <div id="lidar-filter-overlay" class="lidar-overlay"></div>
+
+        <!-- 3D LiDAR SLAM Tactical HUD Widget (Active in LiDAR Mode) -->
+        <div id="lidar-slam-hud" class="lidar-slam-hud" style="display: none;">
+          <div class="lidar-hud-panel">
+            <div class="lidar-hud-title">
+              <span class="lidar-hud-badge">3D LIDAR SLAM</span>
+              <span class="mono" id="lidar-hz-text" style="color:#00f0ff; font-weight:700;">20.0 Hz</span>
+            </div>
+            
+            <!-- Polar Radar Mini Scope -->
+            <div class="lidar-scope-container">
+              <canvas id="lidar-polar-scope" width="130" height="130"></canvas>
+            </div>
+
+            <!-- Realtime Metrics -->
+            <div class="lidar-metrics-grid">
+              <div class="lidar-metric-row">
+                <span class="lbl">MIN DIST:</span>
+                <span class="val mono" id="lidar-min-dist">-- m</span>
+              </div>
+              <div class="lidar-metric-row">
+                <span class="lbl">STATUS:</span>
+                <span class="val mono" id="lidar-status-badge">CLEAR</span>
+              </div>
+              <div class="lidar-metric-row">
+                <span class="lbl">POINTS:</span>
+                <span class="val mono" id="lidar-point-count">0 / 2,000</span>
+              </div>
+              <div class="lidar-metric-row">
+                <span class="lbl">ARRAY:</span>
+                <span class="val mono" style="color:#38bdf8;">16-Channel 360°</span>
+              </div>
+            </div>
+
+            <!-- Elevation Colormap Scale -->
+            <div class="lidar-elevation-legend">
+              <span class="legend-lbl">ELEVATION (Z):</span>
+              <div class="legend-bar"></div>
+              <div class="legend-ticks">
+                <span>0m (Ground)</span>
+                <span>4m</span>
+                <span>12m+</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Viewport Topbar Toolbar: Sensor Switcher & Camera Switcher -->
         <div class="viewport-topbar">

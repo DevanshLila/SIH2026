@@ -201,18 +201,79 @@ class DroneModel {
     this.group.add(this.spotlight);
     this.group.add(this.spotlight.target);
 
-    // 6. Dynamic LiDAR Scanning Visual Cone
-    const lidarConeGeo = new THREE.ConeGeometry(8, 22, 24, 1, true);
-    const lidarConeMat = new THREE.MeshBasicMaterial({
+    // 6. Dynamic LiDAR Scanning Rig (Realistic inverted downward scanning cone)
+    this.lidarRig = new THREE.Group();
+    this.lidarRig.position.set(0, -0.52, 0); // Apex anchored at LiDAR puck under drone
+
+    const coneHeight = 24;
+    const coneRadius = 12;
+
+    // A. Outer translucent volumetric beam cone (Apex at y=0, widening downwards to y=-24)
+    const coneGeo = new THREE.ConeGeometry(coneRadius, coneHeight, 32, 4, true);
+    coneGeo.translate(0, -coneHeight / 2, 0);
+
+    const coneMat = new THREE.MeshBasicMaterial({
       color: 0x00f0ff,
+      wireframe: false,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    this.lidarCone = new THREE.Mesh(coneGeo, coneMat);
+    this.lidarRig.add(this.lidarCone);
+
+    // B. Inner wireframe scanning ribs (multi-channel beam array)
+    const wireGeo = new THREE.ConeGeometry(coneRadius * 0.99, coneHeight, 16, 6, true);
+    wireGeo.translate(0, -coneHeight / 2, 0);
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
       wireframe: true,
       transparent: true,
-      opacity: 0.18
+      opacity: 0.22,
+      depthWrite: false
     });
-    this.lidarBeam = new THREE.Mesh(lidarConeGeo, lidarConeMat);
-    this.lidarBeam.rotation.x = Math.PI;
-    this.lidarBeam.position.y = -11;
-    this.group.add(this.lidarBeam);
+    this.lidarWire = new THREE.Mesh(wireGeo, wireMat);
+    this.lidarRig.add(this.lidarWire);
+
+    // C. 360° Rotating Vertical Laser Fan / Scan Plane
+    const fanPoints = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(coneRadius * 0.98, -coneHeight, 0),
+      new THREE.Vector3(-coneRadius * 0.98, -coneHeight, 0)
+    ];
+    const fanGeo = new THREE.BufferGeometry().setFromPoints(fanPoints);
+    fanGeo.setIndex([0, 1, 2]);
+    const fanMat = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0.26,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    this.lidarFan = new THREE.Mesh(fanGeo, fanMat);
+    this.lidarRig.add(this.lidarFan);
+
+    // D. Descending Laser Pulse Rings (travel down from puck to ground)
+    this.lidarPulseRings = [];
+    for (let i = 0; i < 3; i++) {
+      const ringGeo = new THREE.RingGeometry(0.08, 0.22, 32);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.userData = { progress: i / 3 };
+      this.lidarRig.add(ring);
+      this.lidarPulseRings.push(ring);
+    }
+
+    this.group.add(this.lidarRig);
+    this.lidarBeam = this.lidarRig; // backward compatibility
   }
 
   update(delta) {
@@ -222,9 +283,21 @@ class DroneModel {
       prop.group.rotation.y += propSpeed * prop.direction * delta;
     });
 
-    // 2. Pulse LiDAR beam rotation
-    if (this.lidarBeam) {
-      this.lidarBeam.rotation.y += 1.8 * delta;
+    // 2. Pulse LiDAR beam rotation & downward scanning wave animation
+    if (this.lidarRig) {
+      if (this.lidarWire) this.lidarWire.rotation.y += 2.2 * delta;
+      if (this.lidarFan) this.lidarFan.rotation.y += 4.5 * delta;
+
+      const coneHeight = 24;
+      const coneRadius = 12;
+      this.lidarPulseRings.forEach(ring => {
+        ring.userData.progress = (ring.userData.progress + 0.45 * delta) % 1.0;
+        const p = ring.userData.progress;
+        ring.position.y = -p * coneHeight;
+        const rScale = Math.max(0.1, p * coneRadius * 4.5);
+        ring.scale.set(rScale, rScale, 1);
+        ring.material.opacity = Math.sin(p * Math.PI) * 0.55;
+      });
     }
 
     // 3. Flight physics interpolation toward target
