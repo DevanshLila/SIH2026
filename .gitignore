@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary browser testing profiles
+edge_temp_profile/
+*.tmp
