@@ -17,7 +17,6 @@ if sys.platform.startswith('win'):
     except Exception:
         pass
 
-PORT = 8000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -26,8 +25,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     os.chdir(DIRECTORY)
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
-        url = f"http://localhost:{PORT}"
+    socketserver.TCPServer.allow_reuse_address = True
+    
+    selected_port = None
+    httpd = None
+    for port in [8000, 8080, 8081, 8888, 3000]:
+        try:
+            httpd = socketserver.TCPServer(("", port), Handler)
+            selected_port = port
+            break
+        except OSError:
+            continue
+
+    if not httpd:
+        print("Error: Could not bind to any port.")
+        return
+
+    with httpd:
+        url = f"http://localhost:{selected_port}"
         print("=" * 65)
         print("  🚁 AERORES-AI: Autonomous Disaster Rescue UAV Simulation")
         print("  🏆 Team Pegasus | Smart India Hackathon 2026")
