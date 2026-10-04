@@ -251,10 +251,13 @@ class TacticalGcsDashboard {
     const elVisPct = document.getElementById('val-visibility-pct');
     if (elVisPct) {
       const app = window.droneApp;
+      const curWeather = (this.environment && this.environment.currentWeather) || (app && app.currentWeather) || 'clear';
       let vis = '98.5%';
-      if (app && app.currentWeather === 'rain') vis = '72.0%';
-      else if (app && app.currentWeather === 'dust') vis = '48.0%';
-      else if (app && app.currentWeather === 'windy') vis = '88.0%';
+      if (curWeather === 'rain') vis = '72.0%';
+      else if (curWeather === 'dust') vis = '48.0%';
+      else if (curWeather === 'windy') vis = '88.0%';
+      else if (curWeather === 'snow') vis = '55.0%';
+      else if (curWeather === 'cloudy') vis = '91.0%';
       elVisPct.textContent = vis;
     }
 

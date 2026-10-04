@@ -670,17 +670,19 @@ class AutonomousNavigator {
     if (!this.isReturningHome && this.navMode !== 'RTH' && this.navMode !== 'MANUAL') {
       if (this.environment && this.environment.survivors) {
         for (let s of this.environment.survivors) {
-          const dist = dronePos.distanceTo(s.position);
-          if (dist < 18.0 && !this.reportedSurvivors.has(s.id)) {
-            // Lock onto survivor location for 6 seconds
-            this.reportedSurvivors.add(s.id);
-            this.loiteringTarget = s;
-            this.loiterTimer = 6.0;
+          if (s.detected && !this.reportedSurvivors.has(s.id)) {
+            const dist = dronePos.distanceTo(s.position);
+            if (dist < 18.0) {
+              // Lock onto survivor location for 6 seconds
+              this.reportedSurvivors.add(s.id);
+              this.loiteringTarget = s;
+              this.loiterTimer = 6.0;
 
-            // Hover stationary directly above survivor at 8m altitude
-            this.drone.targetPosition.set(s.position.x, Math.max(7.5, s.position.y + 4.5), s.position.z);
-            this.dispatchRescueSquadAlert(s);
-            return;
+              // Hover stationary directly above survivor at 8m altitude
+              this.drone.targetPosition.set(s.position.x, Math.max(7.5, s.position.y + 4.5), s.position.z);
+              this.dispatchRescueSquadAlert(s);
+              return;
+            }
           }
         }
       }

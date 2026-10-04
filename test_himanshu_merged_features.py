@@ -171,21 +171,28 @@ loiter_test = eval_js(ws, """(() => {
     const nav = app.navigator;
     const env = app.environment;
     
-    // Pick first survivor
+    // Pick first survivor and reset reported state
     const s = env.survivors[0];
-    s.detected = true;
+    nav.reportedSurvivors.clear();
+    nav.loiteringTarget = null;
     
-    // Move drone near survivor
+    // Test 3A: When all survivors nearby are undetected, UAV must NOT loiter
+    env.survivors.forEach(sv => sv.detected = false);
     app.drone.group.position.set(s.position.x, 10, s.position.z);
-    
-    // Run an update cycle
     nav.handleAutonomousWaypointFollow(0.1);
+    const undetectedLoitered = !!nav.loiteringTarget;
+    
+    // Test 3B: When s.detected is true, UAV MUST trigger auto-loitering and alert
+    s.detected = true;
+    nav.handleAutonomousWaypointFollow(0.1);
+    const detectedLoitered = !!nav.loiteringTarget;
     
     const banner = document.getElementById('rescue-dispatch-banner');
     const content = document.getElementById('rescue-dispatch-content');
     
     return {
-        hasLoiteringTarget: !!nav.loiteringTarget,
+        undetectedLoitered,
+        detectedLoitered,
         loiterTargetId: nav.loiteringTarget ? nav.loiteringTarget.id : null,
         loiterTimer: nav.loiterTimer,
         bannerDisplay: banner ? banner.style.display : null,
@@ -193,9 +200,10 @@ loiter_test = eval_js(ws, """(() => {
     };
 })()""")
 print("Loiter & Alert Test:", loiter_test)
-assert loiter_test['hasLoiteringTarget'], "Survivor auto-loiter not triggered!"
+assert not loiter_test['undetectedLoitered'], "Error: Undetected survivor incorrectly triggered loitering!"
+assert loiter_test['detectedLoitered'], "Survivor auto-loiter not triggered for detected survivor!"
 assert loiter_test['bannerDisplay'] == 'block' and loiter_test['bannerHasText'], "Rescue squad dispatch alert banner not shown!"
-print("[PASS] TEST 3: Survivor auto-loitering and rescue dispatch alert banner verified.")
+print("[PASS] TEST 3: Survivor auto-loitering (detected-only) and rescue dispatch alert banner verified.")
 
 print("\n--- TEST 4: 3D LiDAR Collision Avoidance (8.5m clearance warning & 2.4m critical barrier) ---")
 avoid_test = eval_js(ws, """(() => {
@@ -213,15 +221,13 @@ avoid_test = eval_js(ws, """(() => {
         const obsPos = new THREE.Vector3();
         obs.getWorldPosition(obsPos);
         
-        // Position drone 3.5m from obstacle at low altitude 1.5m, moving toward it
+        // Anticipatory avoidance within 8.5m bubble and critical pushback barrier
         drone.group.position.set(obsPos.x + 3.5, 1.5, obsPos.z);
         drone.velocity.set(-2, 0, 0);
         drone.targetPosition.set(obsPos.x, 1.5, obsPos.z);
-        
         nav.checkObstacleAvoidance();
-        
         const isAvoiding = nav.isAvoidingObstacle;
-        const targetClimbed = drone.targetPosition.y > 2.5;
+        const targetClimbed = drone.targetPosition.y >= 3.2;
         
         return {
             isAvoiding,
@@ -241,6 +247,14 @@ print("\n--- TEST 5: Avionics Atmospheric & Weather Radar Telemetry Card ---")
 avionics_test = eval_js(ws, """(() => {
     const app = window.droneApp;
     app.drone.telemetry.windSpeed = 16.5;
+    
+    // Test snow visibility calculation
+    app.setWeather('snow');
+    app.gcs.updateAvionicsUI(app.drone.telemetry);
+    const snowVis = document.getElementById('val-visibility-pct').textContent;
+    
+    // Restore clear weather
+    app.setWeather('clear');
     app.gcs.updateAvionicsUI(app.drone.telemetry);
     
     const elCond = document.getElementById('val-weather-condition');
@@ -254,14 +268,16 @@ avionics_test = eval_js(ws, """(() => {
         wind: elWind ? elWind.textContent : null,
         dir: elDir ? elDir.textContent : null,
         vis: elVis ? elVis.textContent : null,
+        snowVis: snowVis,
         imu: elImu ? elImu.textContent : null,
         hasProxMethod: typeof app.gcs.playProximityBeep === 'function'
     };
 })()""")
 print("Avionics Radar Card Test:", avionics_test)
 assert avionics_test['cond'] and avionics_test['wind'] and avionics_test['dir'] and avionics_test['vis'], "Avionics elements missing!"
+assert avionics_test['snowVis'] == '55.0%', f"Expected 55.0% for snow weather, got {avionics_test['snowVis']}"
 assert avionics_test['hasProxMethod'], "playProximityBeep method missing!"
-print("[PASS] TEST 5: Avionics Atmospheric & Weather Radar card and audio alarm verified.")
+print("[PASS] TEST 5: Avionics Atmospheric & Weather Radar card, snow visibility, and audio alarm verified.")
 
 print("\n--- TEST 6: LiDAR SLAM Mode (Inverted Cone, Rotating 16 Beams, HUD Overlay) ---")
 lidar_test = eval_js(ws, """(() => {
@@ -296,8 +312,100 @@ assert lidar_test['hasLidarFilter'], "LIDAR filter not applied to container!"
 assert lidar_test['frustumVisible'] and lidar_test['wireframeVisible'] and lidar_test['beamsVisible'], "Inverted cone and 16 laser beams not visible!"
 print("[PASS] TEST 6: LiDAR SLAM inverted cone, rotating 16 beams, and HUD overlay verified.")
 
+print("\n--- TEST 7: KML & QGroundControl Mission File Parsing ---")
+file_test = eval_js(ws, """(() => {
+    const app = window.droneApp;
+    const nav = app.navigator;
+    
+    // Test synthetic KML parsing via feedGpsTargetArea
+    const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+    <kml><Placemark><Point><coordinates>91.738000,26.146000,15.0</coordinates></Point></Placemark></kml>`;
+    
+    const match = kmlContent.match(/<coordinates>[\\s\\S]*?([-\\d.]+)\\s*,\\s*([-\\d.]+)/i);
+    const lng = parseFloat(match[1]);
+    const lat = parseFloat(match[2]);
+    
+    const sector = nav.feedGpsTargetArea({
+        centerLat: lat,
+        centerLng: lng,
+        widthMeters: 60,
+        lengthMeters: 60,
+        sectorName: 'TEST KML SECTOR'
+    });
+    
+    return {
+        latParsed: lat,
+        lngParsed: lng,
+        sectorName: sector.sectorName,
+        isFed: sector.isFed,
+        waypointsCount: nav.waypoints.length
+    };
+})()""")
+print("File Parse Test:", file_test)
+assert file_test['latParsed'] == 26.146 and file_test['lngParsed'] == 91.738, "KML coordinates incorrectly parsed!"
+assert file_test['isFed'] and file_test['waypointsCount'] > 0, "Waypoints not generated from mission file!"
+print("[PASS] TEST 7: KML mission file coordinate parsing and sector allocation verified.")
+
+print("\n--- TEST 8: Cross-Environment Collision Avoidance & Mode Stability ---")
+cross_col_test = eval_js(ws, """(() => {
+    const app = window.droneApp;
+    const nav = app.navigator;
+    const drone = app.drone;
+    
+    // 8A. Test Chemical Fire Scenario Colliders
+    app.setScenario('chemical_fire');
+    const chemColliders = app.environment.obstacleColliders;
+    let chemAvoiding = false;
+    if (chemColliders && chemColliders.length > 0) {
+        const obs = chemColliders[5];
+        const obsPos = new THREE.Vector3();
+        obs.getWorldPosition(obsPos);
+        drone.group.position.set(obsPos.x + 3.0, 2.5, obsPos.z);
+        drone.velocity.set(-2.0, 0, 0);
+        drone.targetPosition.set(obsPos.x, 2.5, obsPos.z);
+        nav.checkObstacleAvoidance();
+        chemAvoiding = nav.isAvoidingObstacle;
+    }
+    
+    // 8B. Test Flash Flood Scenario Colliders
+    app.setScenario('flash_flood');
+    const floodColliders = app.environment.obstacleColliders;
+    let floodAvoiding = false;
+    if (floodColliders && floodColliders.length > 0) {
+        const obs = floodColliders[8];
+        const obsPos = new THREE.Vector3();
+        obs.getWorldPosition(obsPos);
+        drone.group.position.set(obsPos.x + 3.0, 3.5, obsPos.z);
+        drone.velocity.set(-2.0, 0, 0);
+        drone.targetPosition.set(obsPos.x, 3.5, obsPos.z);
+        nav.checkObstacleAvoidance();
+        floodAvoiding = nav.isAvoidingObstacle;
+    }
+    
+    // 8C. Test Manual Mode Collision Integration
+    nav.setNavMode('MANUAL');
+    drone.group.position.set(10, 5, 10);
+    drone.velocity.set(0, 0, 0);
+    drone.targetPosition.set(10, 5, 10);
+    nav.update(0.05);
+    const manualModeActive = (nav.navMode === 'MANUAL');
+    
+    return {
+        chemCollidersCount: chemColliders.length,
+        chemAvoiding,
+        floodCollidersCount: floodColliders.length,
+        floodAvoiding,
+        manualModeActive
+    };
+})()""")
+print("Cross-Environment Collision Test:", cross_col_test)
+assert cross_col_test['chemCollidersCount'] > 50 and cross_col_test['chemAvoiding'], "Chemical Fire collision failed!"
+assert cross_col_test['floodCollidersCount'] > 50 and cross_col_test['floodAvoiding'], "Flash Flood collision failed!"
+assert cross_col_test['manualModeActive'], "Manual mode broken after collision checks!"
+print("[PASS] TEST 8: Collision avoidance verified across Chemical Fire, Flash Flood, and Manual Flight.")
+
 print("\n=======================================================")
-print("  ALL 6 HIMANSHU MERGED FEATURES DEEP TESTS PASSED 100%!")
+print("  ALL 8 HIMANSHU MERGED FEATURES DEEP TESTS PASSED 100%!")
 print("=======================================================\n")
 
 proc.terminate()

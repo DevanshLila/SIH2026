@@ -404,15 +404,40 @@ class App {
           try {
             let lat = 26.145200;
             let lng = 91.737100;
+            const content = event.target.result;
+
             if (file.name.endsWith('.json')) {
-              const data = JSON.parse(event.target.result);
-              if (data.lat) lat = data.lat;
-              if (data.lng) lng = data.lng;
+              const data = JSON.parse(content);
+              if (data.lat !== undefined) lat = parseFloat(data.lat);
+              if (data.lng !== undefined) lng = parseFloat(data.lng);
+            } else if (file.name.endsWith('.kml') || content.includes('<coordinates>')) {
+              const coordMatch = content.match(/<coordinates>[\s\S]*?([-\d.]+)\s*,\s*([-\d.]+)/i);
+              if (coordMatch) {
+                lng = parseFloat(coordMatch[1]);
+                lat = parseFloat(coordMatch[2]);
+              }
+            } else if (file.name.endsWith('.waypoints') || content.includes('QGC WPL')) {
+              const lines = content.split('\n');
+              for (const line of lines) {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 10) {
+                  const pLat = parseFloat(parts[8]);
+                  const pLng = parseFloat(parts[9]);
+                  if (Number.isFinite(pLat) && Number.isFinite(pLng) && Math.abs(pLat) > 0.001) {
+                    lat = pLat;
+                    lng = pLng;
+                    break;
+                  }
+                }
+              }
             }
+
             const inputLat = document.getElementById('input-gps-lat');
             const inputLng = document.getElementById('input-gps-lng');
             if (inputLat) inputLat.value = lat.toFixed(6);
             if (inputLng) inputLng.value = lng.toFixed(6);
+            if (fileNameDisplay) fileNameDisplay.textContent = `✓ ${file.name} [${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E]`;
+
             this.navigator.feedGpsTargetArea({
               centerLat: lat,
               centerLng: lng,
@@ -423,6 +448,7 @@ class App {
             setTimeout(closeGps, 600);
           } catch (err) {
             console.warn('File parse error', err);
+            if (fileNameDisplay) fileNameDisplay.textContent = `⚠️ Error parsing ${file.name}`;
           }
         };
         reader.readAsText(file);
